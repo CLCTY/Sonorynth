@@ -1,6 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val signingPath = System.getenv("SONORYNTH_SIGNING_PROPERTIES")
+val releaseSigning = Properties()
+if (!signingPath.isNullOrBlank()) {
+    file(signingPath).inputStream().use { releaseSigning.load(it) }
+    listOf("storeFile", "storePassword", "keyAlias", "keyPassword").forEach {
+        require(!releaseSigning.getProperty(it).isNullOrBlank()) { "Missing release signing field: $it" }
+    }
 }
 
 android {
@@ -21,8 +32,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (!signingPath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
-        named("release") { signingConfig = signingConfigs.getByName("debug") }
+        named("release") {
+            signingConfig = if (!signingPath.isNullOrBlank()) signingConfigs.getByName("release") else null
+        }
     }
 }
 
