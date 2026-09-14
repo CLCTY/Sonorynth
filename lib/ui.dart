@@ -3770,11 +3770,11 @@ class SettingsScreen extends StatelessWidget {
               SettingsAction(
                 icon: Icons.info_rounded,
                 title: '关于 Sonorynth',
-                subtitle: '1.10.10 · Flutter / Material 3 Expressive',
+                subtitle: '1.10.11 · Flutter / Material 3 Expressive',
                 onTap: () => showAboutDialog(
                   context: context,
                   applicationName: 'Sonorynth',
-                  applicationVersion: '1.10.10',
+                  applicationVersion: '1.10.11',
                   applicationLegalese: 'Independent implementation.',
                 ),
               ),
