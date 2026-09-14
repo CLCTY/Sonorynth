@@ -314,7 +314,7 @@ class HomeScreen extends StatelessWidget {
     return CustomScrollView(
       key: const PageStorageKey('home-scroll'),
       slivers: [
-        SliverToBoxAdapter(child: PageTitle(greeting, subtitle: 'MELODY FLOW')),
+        SliverToBoxAdapter(child: PageTitle(greeting, subtitle: 'SONORYNTH')),
         SliverToBoxAdapter(
           child: SectionHeader(
             '继续聆听',

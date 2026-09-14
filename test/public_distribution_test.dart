@@ -2,6 +2,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('public interface has no legacy display name in any letter case', () {
+    final ui = File('lib/ui.dart').readAsStringSync();
+    expect(ui, contains("subtitle: 'SONORYNTH'"));
+    for (final file in Directory('lib').listSync().whereType<File>()) {
+      if (!file.path.endsWith('.dart')) continue;
+      expect(
+        RegExp(r'melody[ _-]*flow', caseSensitive: false)
+            .hasMatch(file.readAsStringSync()),
+        isFalse,
+        reason: file.path,
+      );
+    }
+  });
   test('public copy excludes restricted source adapters', () {
     expect(File('lib/unlock_source.dart').existsSync(), isFalse);
     final code = Directory('lib')
