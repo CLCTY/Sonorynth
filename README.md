@@ -1,10 +1,6 @@
 # Sonorynth
 
-> 独立的公开源码副本，原项目未修改。本副本不包含解锁音源实现、受限音源回退和酷我搜索入口。全部代码与资源的许可核查尚未完成，待办见文末。
->
-> Android 应用 ID 为 `app.sonorynth.player`，与原安装版数据隔离。当前仍为开发用 debug 签名，正式发行前须配置私有签名。
-
-一款面向 Android 的 Flutter 音乐播放器原型与可扩展实现，使用 Material 3 Expressive 设计语言。当前版本已覆盖完整主流程，并提供可运行的演示数据以及真实服务接入层。
+一款面向 Android 的 Flutter 音乐播放器，采用 Material 3 Expressive 设计风格，支持网易云音乐服务、账号登录、封面取色与逐字歌词。
 
 ## 已实现
 
@@ -29,24 +25,13 @@ flutter run
 
 开发环境需安装支持 Dart >=3.10.0 的 Flutter SDK、Android SDK 和 JDK 17。Android 最低版本由所用 Flutter SDK 决定。
 
-## 网易云服务配置
+## 网易云音乐与登录
 
-应用不内置第三方账号密钥。进入：
+网易云 API 接入与账号登录是内置基础功能，无需自行部署 API 服务或填写服务根地址。
 
-`我的 → 设置 → 音乐服务`
+在应用的网易云登录入口，可使用二维码登录或手机号验证码登录。登录后可使用账号资料、推荐、收藏等相关功能；歌曲播放和音质以账号实际权限及服务返回结果为准。
 
-填写你自己部署或明确获准使用的 NetEaseCloudMusicApi 兼容服务根地址，例如 `https://music-api.example.com`。随后可在 `我的 → 登录网易云音乐` 使用二维码登录。
-
-支持的兼容端点：
-
-- `/cloudsearch`
-- `/personalized/newsong`
-- `/song/url/v1`
-- `/lyric/new`
-- `/login/qr/key`
-- `/login/qr/create`
-- `/login/qr/check`
-- `/user/account`
+请求由应用内的 `NeteaseApi` 与 `NeteaseLocalApi` 处理，登录会话通过设备端安全存储保存。下面的自备音源适配器是可选扩展，不是网易云登录或基础服务的前提。
 
 ## 授权音源适配器
 
