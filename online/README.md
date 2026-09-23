@@ -1,6 +1,6 @@
-# Sonorynth 在线版
+# Sonorynth QQ 歌词扩展版
 
-Android 音乐播放器，支持网易云音乐在线内容、QQ 音乐歌词与逐字歌词显示。源码对应 Android 包名 `app.melodyflow.player`；它与仓库根目录的 Sonorynth 本地版并存。
+Android 音乐播放器，支持网易云音乐在线内容、QQ 音乐歌词与逐字歌词显示。源码对应 Android 包名 `app.melodyflow.player`；它与仓库根目录的 Sonorynth 原版（网易云在线）并存。
 
 ## 功能
 
@@ -11,7 +11,7 @@ Android 音乐播放器，支持网易云音乐在线内容、QQ 音乐歌词与
 
 ## 安装
 
-从 [在线版 Release](https://github.com/CLCTY/Sonorynth/releases/tag/online-v1.10.12) 下载 ARM64 APK。它使用正式发行签名，与本地版的包名不同，可以共存。此前直接安装到手机的 1.10.12 调试签名包使用相同包名，不能直接覆盖为正式签名包；如需改装正式版，先备份应用内数据并卸载旧包。
+从 [QQ 歌词扩展版 Release](https://github.com/CLCTY/Sonorynth/releases/tag/online-v1.10.12) 下载 ARM64 APK。它使用正式发行签名，与原版的包名不同，可以共存。此前直接安装到手机的 1.10.12 调试签名包使用相同包名，不能直接覆盖为正式签名包；如需改装正式版，先备份应用内数据并卸载旧包。
 
 ## 构建
 

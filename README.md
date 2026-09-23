@@ -1,15 +1,15 @@
 # Sonorynth
 
-本仓库包含两个 Android 版本：
+本仓库包含两个支持在线功能的 Android 版本：
 
 | 版本 | 源码 | Android 包名 | 下载 |
 | --- | --- | --- | --- |
-| 本地版 | 仓库根目录 | `app.sonorynth.player` | [v1.10.11](https://github.com/CLCTY/Sonorynth/releases/tag/v1.10.11) |
-| 在线版 | [online/](online/) | `app.melodyflow.player` | [online-v1.10.12](https://github.com/CLCTY/Sonorynth/releases/tag/online-v1.10.12) |
+| 原版（网易云在线） | 仓库根目录 | `app.sonorynth.player` | [v1.10.11](https://github.com/CLCTY/Sonorynth/releases/tag/v1.10.11) |
+| QQ 歌词扩展版 | [online/](online/) | `app.melodyflow.player` | [online-v1.10.12](https://github.com/CLCTY/Sonorynth/releases/tag/online-v1.10.12) |
 
-两个版本可以共存。在线版的功能、安装及歌词来源排序见 [在线版说明](online/README.md)。
+两个版本可以共存。QQ 歌词扩展版的功能、安装及歌词来源排序见 [扩展版说明](online/README.md)。
 
-## 本地版
+## 原版（网易云在线）
 
 一款面向 Android 的 Flutter 音乐播放器，采用 Material 3 Expressive 设计风格，支持网易云音乐服务、账号登录、封面取色与逐字歌词。
 
