@@ -1,5 +1,5 @@
 name: sonorynth
-description: Material 3 Expressive Android music player with NetEase-compatible services.
+description: Android music player with online playback, playlists, and LRC/QRC/YRC/TTML lyrics.
 publish_to: none
 version: 1.10.12+46
 
