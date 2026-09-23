@@ -160,6 +160,7 @@ class MelodyState extends ChangeNotifier {
     Color(0xffa45062),
   ];
   List<Color> _coverPalette = _neutralPalette;
+  List<Color> _flowPalette = _neutralPalette;
   final Map<String, LyricsPayload> _lyricCache = {};
   String lyricChoicesTrackId = '';
   String _dailyCacheDate = '';
@@ -169,6 +170,7 @@ class MelodyState extends ChangeNotifier {
   Duration get lyricPosition => position - Duration(milliseconds: lyricDelayMs);
   Color get seedColor => _coverPalette.first;
   List<Color> get coverPalette => dynamicColor ? _coverPalette : _brandPalette;
+  List<Color> get flowPalette => dynamicColor ? _flowPalette : _brandPalette;
   FontWeight get normalWeight => switch (fontWeightLevel) {
     0 => FontWeight.w300,
     1 => FontWeight.w400,
@@ -518,6 +520,7 @@ class MelodyState extends ChangeNotifier {
     _activeSourceUri = null;
     current = track;
     _coverPalette = _neutralPalette;
+    _flowPalette = _neutralPalette;
     _notifyThemeChanged();
     if (from != null) queue = List.of(from);
     if (queue.every((item) => item.id != track.id)) queue = [track, ...queue];
@@ -1366,6 +1369,7 @@ class MelodyState extends ChangeNotifier {
     await _prefs?.setInt('coverColorStyle', value.index);
     if (hasCurrent && dynamicColor) {
       _coverPalette = _neutralPalette;
+      _flowPalette = _neutralPalette;
       _notifyThemeChanged();
       notifyListeners();
       await _extractCoverColor(current);
@@ -1537,9 +1541,11 @@ class MelodyState extends ChangeNotifier {
       // cover still goes through the subdued-colour path below.
       if (_isPredominantlyMonochrome(chromaSamples) || bins.isEmpty) {
         if (current.id == track.id) {
-          _coverPalette = List.unmodifiable(
+          final monochrome = List<Color>.unmodifiable(
             _monochromePalette(brightnessSamples),
           );
+          _coverPalette = monochrome;
+          _flowPalette = monochrome;
           _notifyThemeChanged();
           notifyListeners();
         }
@@ -1548,6 +1554,7 @@ class MelodyState extends ChangeNotifier {
       final subdued = chroma90 <= 32;
       final candidates = bins.values.where((bucket) => bucket.isUsable).toList()
         ..sort((a, b) => _bucketScore(b).compareTo(_bucketScore(a)));
+      final flowColors = _buildFlowPalette(candidates, subdued: subdued);
       final selected = <Color>[];
       for (final bucket in candidates) {
         final color = _polishCoverColor(bucket.color, subdued: subdued);
@@ -1586,9 +1593,11 @@ class MelodyState extends ChangeNotifier {
       }
       if (selected.isEmpty) {
         if (current.id == track.id) {
-          _coverPalette = List.unmodifiable(
+          final monochrome = List<Color>.unmodifiable(
             _monochromePalette(brightnessSamples),
           );
+          _coverPalette = monochrome;
+          _flowPalette = monochrome;
           _notifyThemeChanged();
           notifyListeners();
         }
@@ -1605,12 +1614,72 @@ class MelodyState extends ChangeNotifier {
       }
       if (current.id == track.id) {
         _coverPalette = List.unmodifiable(selected);
+        _flowPalette = List.unmodifiable(flowColors);
         _notifyThemeChanged();
         notifyListeners();
       }
     } catch (_) {
       // Keep the track's fallback seed if artwork cannot be decoded.
     }
+  }
+
+  List<Color> _buildFlowPalette(
+    List<_ColorBucket> candidates, {
+    required bool subdued,
+  }) {
+    if (candidates.isEmpty) return _neutralPalette;
+
+    // Count nearby hues together so a broad colour family wins over a small,
+    // saturated accent that occupies one RGB bucket.
+    final hueCounts = List<int>.filled(24, 0);
+    for (final bucket in candidates) {
+      hueCounts[(bucket.hsl.hue / 15).floor() % hueCounts.length] +=
+          bucket.count;
+    }
+    var dominantHue = 0;
+    var dominantCount = -1;
+    for (var index = 0; index < hueCounts.length; index++) {
+      final count =
+          hueCounts[(index + hueCounts.length - 1) % hueCounts.length] +
+          hueCounts[index] * 2 +
+          hueCounts[(index + 1) % hueCounts.length];
+      if (count > dominantCount) {
+        dominantHue = index;
+        dominantCount = count;
+      }
+    }
+    final hueCenter = (dominantHue + .5) * 15;
+    final byPopulation = List<_ColorBucket>.of(candidates)
+      ..sort((a, b) => b.count.compareTo(a.count));
+    final main = byPopulation.firstWhere((bucket) {
+      final delta = (bucket.hsl.hue - hueCenter).abs();
+      return math.min(delta, 360 - delta) <= 22.5;
+    }, orElse: () => byPopulation.first);
+    final colors = <Color>[_polishCoverColor(main.color, subdued: subdued)];
+    for (final bucket in byPopulation) {
+      final color = _polishCoverColor(bucket.color, subdued: subdued);
+      if (colors.every(
+        (existing) =>
+            _hueDistance(existing, color) >= 18 &&
+            _colorDistance(existing, color) >= 30,
+      )) {
+        colors.add(color);
+      }
+      if (colors.length == 3) break;
+    }
+    if (colors.length == 1) {
+      final hsl = HSLColor.fromColor(colors.first);
+      colors
+        ..add(
+          hsl.withLightness((hsl.lightness + .12).clamp(.12, .88)).toColor(),
+        )
+        ..add(
+          hsl.withLightness((hsl.lightness - .12).clamp(.12, .88)).toColor(),
+        );
+    } else if (colors.length == 2) {
+      colors.add(colors.first);
+    }
+    return colors;
   }
 
   double _colorDistance(Color left, Color right) {

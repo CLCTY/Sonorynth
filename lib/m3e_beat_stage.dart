@@ -231,7 +231,7 @@ class _PaletteGradientStageState extends State<PaletteGradientStage>
       Rect.fromLTWH(-12, -12, source.width + 24, source.height + 24),
       Paint()
         ..shader = shader
-        ..imageFilter = ui.ImageFilter.blur(sigmaX: 1.3, sigmaY: 1.3),
+        ..imageFilter = ui.ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
     );
     final picture = recorder.endRecording();
     try {
@@ -392,6 +392,7 @@ class _PaletteGradientStageState extends State<PaletteGradientStage>
             imageTransitionStart: _imageTransitionStart,
             base: Theme.of(context).colorScheme.surface,
             dark: Theme.of(context).brightness == Brightness.dark,
+            lowPower: widget.lowPower,
           ),
           child: const SizedBox.expand(),
         ),
@@ -415,13 +416,15 @@ class _PaletteGradientPainter extends CustomPainter {
     required this.imageTransitionStart,
     required this.base,
     required this.dark,
+    required this.lowPower,
   }) : _seed = _hash(trackId),
        super(repaint: repaint) {
     _fromField = _buildFieldPalette(paletteFrom, base, dark);
     _toField = _buildFieldPalette(paletteTo, base, dark);
+    _neutral = _isNeutralPalette(paletteTo);
     _textureColorFilter = _buildTextureColorFilter(
       dark,
-      neutral: _isNeutralPalette(paletteTo),
+      neutral: _neutral,
       subdued: _isSubduedPalette(paletteTo),
     );
   }
@@ -444,10 +447,12 @@ class _PaletteGradientPainter extends CustomPainter {
   final double imageTransitionStart;
   final Color base;
   final bool dark;
+  final bool lowPower;
   final int _seed;
 
   late final List<Color> _fromField;
   late final List<Color> _toField;
+  late final bool _neutral;
   late final ColorFilter _textureColorFilter;
   Float32List? _positions;
   Float32List? _textureCoordinates;
@@ -533,8 +538,6 @@ class _PaletteGradientPainter extends CustomPainter {
     return field;
   }
 
-  static double _fract(double value) => value - value.floorToDouble();
-
   static bool _isNeutralPalette(List<Color> colors) =>
       colors.isNotEmpty &&
       colors.every((color) => HSLColor.fromColor(color).saturation <= .02);
@@ -586,13 +589,6 @@ class _PaletteGradientPainter extends CustomPainter {
     ]);
   }
 
-  Color _sample(List<Color> palette, double position) {
-    final scaled = _fract(position) * palette.length;
-    final index = scaled.floor() % palette.length;
-    final next = (index + 1) % palette.length;
-    return Color.lerp(palette[index], palette[next], scaled - scaled.floor())!;
-  }
-
   void _ensureMesh(Size size) {
     if (_positions != null && _meshSize == size) return;
     _meshSize = size;
@@ -635,50 +631,6 @@ class _PaletteGradientPainter extends CustomPainter {
           _indices!.setRange(offset, offset + 6, [a, b, d, a, d, c]);
         }
         offset += 6;
-      }
-    }
-  }
-
-  void _fillPaletteColors(double seconds) {
-    final paletteMix = _ease(
-      (seconds - paletteTransitionStart) / _paletteTransitionDuration,
-    );
-    final flow = seconds * .42;
-    var vertex = 0;
-    for (var y = 0; y < _rows; y++) {
-      final v = y / (_rows - 1);
-      for (var x = 0; x < _columns; x++) {
-        final u = x / (_columns - 1);
-        final domain =
-            math.sin(v * math.pi * 2.0 + flow + _unit(7) * 5.0) * .115 +
-            math.cos((u + v) * math.pi * 1.55 - flow * .72) * .075;
-        final q1 =
-            u * .65 +
-            v * .82 +
-            domain * 1.65 +
-            _unit(11) +
-            math.sin(flow * .65) * .12;
-        final q2 =
-            -u * .31 +
-            v * .43 +
-            math.sin((u - v) * math.pi * 2.2 + flow * .58) * .095 +
-            _unit(17);
-        // A stable secondary contribution avoids unrelated hues pulsing in
-        // and out as the album-colour field moves.
-        const fieldBlend = .16;
-        final from = Color.lerp(
-          _sample(_fromField, q1),
-          _sample(_fromField, q2),
-          fieldBlend,
-        )!;
-        final to = Color.lerp(
-          _sample(_toField, q1),
-          _sample(_toField, q2),
-          fieldBlend,
-        )!;
-        final color = Color.lerp(from, to, paletteMix)!;
-        _vertexColors![vertex] = color.toARGB32();
-        vertex++;
       }
     }
   }
@@ -741,25 +693,55 @@ class _PaletteGradientPainter extends CustomPainter {
     }
   }
 
-  void _drawPalette(Canvas canvas, double seconds) {
-    _fillPaletteColors(seconds);
-    final vertices = ui.Vertices.raw(
-      ui.VertexMode.triangles,
-      _positions!,
-      colors: _vertexColors,
-      indices: _indices,
+  void _drawPalette(Canvas canvas, Size size, double seconds) {
+    final paletteMix = _ease(
+      (seconds - paletteTransitionStart) / _paletteTransitionDuration,
     );
-    try {
-      canvas.drawVertices(
-        vertices,
-        BlendMode.modulate,
-        Paint()..color = Colors.white,
-      );
-    } finally {
-      // Vertices owns a native allocation. Releasing it every frame avoids the
-      // long-playback native-heap growth this background must not reintroduce.
-      vertices.dispose();
-    }
+    final backdrop = _neutral ? (dark ? Colors.black : Colors.white) : base;
+    final colors = <Color>[
+      for (final index in [0, 2, 4])
+        Color.lerp(
+          backdrop,
+          Color.lerp(_fromField[index], _toField[index], paletteMix)!,
+          dark ? .82 : .74,
+        )!,
+    ];
+    final phase = _unit(7) * math.pi * 2;
+    final driftX = math.sin(seconds * .48 + phase) * size.width * .32;
+    final driftY = math.cos(seconds * .38 + phase) * size.height * .16;
+    final bounds = Offset.zero & size;
+
+    // The shader interpolates at screen resolution. Vertex colours made the
+    // moving field look coarse and produced visible contours around the glow.
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(-size.width * .32 + driftX, -size.height * .20 + driftY),
+          Offset(size.width * 1.32 + driftX, size.height * 1.20 + driftY),
+          [colors[0], colors[0], colors[1], colors[2]],
+          const [0, .18, .60, 1],
+        ),
+    );
+
+    final lightX = math.sin(seconds * .62 + phase + 1.1) * size.width * .58;
+    final light = Colors.white;
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(-size.width * .85 + lightX, -size.height * .18),
+          Offset(size.width * 1.35 + lightX, size.height * 1.18),
+          [
+            light.withValues(alpha: 0),
+            light.withValues(alpha: dark ? .035 : .025),
+            light.withValues(alpha: dark ? .20 : .13),
+            light.withValues(alpha: dark ? .035 : .025),
+            light.withValues(alpha: 0),
+          ],
+          const [0, .25, .50, .75, 1],
+        ),
+    );
   }
 
   void _drawTexture(
@@ -805,7 +787,7 @@ class _PaletteGradientPainter extends CustomPainter {
     double opacity,
   ) {
     // Keep artwork texture as moving colour variation, not a recognisable
-    // full-screen copy of the cover. The palette mesh remains the main field.
+    // full-screen copy of the cover.
     const weights = <double>[1.0];
     for (var layer = 0; layer < weights.length; layer++) {
       _drawTexture(
@@ -814,7 +796,7 @@ class _PaletteGradientPainter extends CustomPainter {
         source,
         shader,
         seconds,
-        opacity * weights[layer] * (dark ? .38 : .24),
+        opacity * weights[layer] * (dark ? .12 : .08),
         layer,
       );
     }
@@ -823,37 +805,38 @@ class _PaletteGradientPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    _ensureMesh(size);
     final seconds = time.value;
-    canvas.drawRect(Offset.zero & size, Paint()..color = base);
-    _drawPalette(canvas, seconds);
+    _drawPalette(canvas, size, seconds);
 
-    final transition = previousImage == null
-        ? 1.0
-        : _ease((seconds - imageTransitionStart) / _imageTransitionDuration);
-    final oldImage = previousImage;
-    final oldShader = previousImageShader;
-    if (oldImage != null && oldShader != null) {
-      _drawTextureStack(
-        canvas,
-        size,
-        oldImage,
-        oldShader,
-        seconds,
-        1 - transition,
-      );
-    }
-    final currentImage = image;
-    final currentShader = imageShader;
-    if (currentImage != null && currentShader != null) {
-      _drawTextureStack(
-        canvas,
-        size,
-        currentImage,
-        currentShader,
-        seconds,
-        transition,
-      );
+    if (!lowPower) {
+      _ensureMesh(size);
+      final transition = previousImage == null
+          ? 1.0
+          : _ease((seconds - imageTransitionStart) / _imageTransitionDuration);
+      final oldImage = previousImage;
+      final oldShader = previousImageShader;
+      if (oldImage != null && oldShader != null) {
+        _drawTextureStack(
+          canvas,
+          size,
+          oldImage,
+          oldShader,
+          seconds,
+          1 - transition,
+        );
+      }
+      final currentImage = image;
+      final currentShader = imageShader;
+      if (currentImage != null && currentShader != null) {
+        _drawTextureStack(
+          canvas,
+          size,
+          currentImage,
+          currentShader,
+          seconds,
+          transition,
+        );
+      }
     }
 
     // AMLL is intentionally very saturated. A light theme-aware veil makes
@@ -861,19 +844,6 @@ class _PaletteGradientPainter extends CustomPainter {
     canvas.drawRect(
       Offset.zero & size,
       Paint()..color = Colors.black.withValues(alpha: dark ? .06 : 0),
-    );
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(0, -.08),
-          radius: 1.08,
-          colors: [
-            Colors.transparent,
-            (dark ? Colors.black : base).withValues(alpha: dark ? .16 : .07),
-          ],
-          stops: const [.38, 1],
-        ).createShader(Offset.zero & size),
     );
   }
 
@@ -887,5 +857,6 @@ class _PaletteGradientPainter extends CustomPainter {
       !identical(oldDelegate.previousImage, previousImage) ||
       oldDelegate.imageTransitionStart != imageTransitionStart ||
       oldDelegate.base != base ||
-      oldDelegate.dark != dark;
+      oldDelegate.dark != dark ||
+      oldDelegate.lowPower != lowPower;
 }

@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'app_state.dart';
 import 'artwork_image.dart';
 import 'lyrics_parser.dart';
@@ -1303,7 +1304,10 @@ class _NowPlayingDrawerRoute extends PageRoute<void> {
                         maxWidth: screen.width,
                         minHeight: screen.height,
                         maxHeight: screen.height,
-                        child: Opacity(opacity: contentOpacity, child: child),
+                        child: TickerMode(
+                          enabled: value >= .999,
+                          child: Opacity(opacity: contentOpacity, child: child),
+                        ),
                       ),
                       Positioned(
                         left: 0,
@@ -1458,7 +1462,7 @@ class PlayerScreen extends StatelessWidget {
               Positioned.fill(
                 child: AlbumBackground(
                   singleColor: state.singleColorPlayerBackground,
-                  colors: state.coverPalette,
+                  colors: state.flowPalette,
                   trackId: state.current.id,
                   coverUrl: state.current.coverUrl,
                   lowPower: state.efficientRendering,
@@ -1636,7 +1640,7 @@ class _TabletPlayerScreen extends StatelessWidget {
               Positioned.fill(
                 child: AlbumBackground(
                   singleColor: state.singleColorPlayerBackground,
-                  colors: state.coverPalette,
+                  colors: state.flowPalette,
                   trackId: state.current.id,
                   coverUrl: state.current.coverUrl,
                   lowPower: state.efficientRendering,
@@ -2568,7 +2572,7 @@ class _LyricsScreenState extends State<LyricsScreen>
             Positioned.fill(
               child: AlbumBackground(
                 singleColor: state.singleColorPlayerBackground,
-                colors: state.coverPalette,
+                colors: state.flowPalette,
                 trackId: state.current.id,
                 coverUrl: state.current.coverUrl,
                 lowPower: state.efficientRendering,
@@ -3772,6 +3776,30 @@ class SettingsScreen extends StatelessWidget {
                   '数据与隐私',
                   '登录 Cookie 仅保存在设备本地，并只发送到你配置的服务地址。',
                 ),
+              ),
+              SettingsAction(
+                icon: Icons.code_rounded,
+                title: 'GitHub 仓库',
+                subtitle: '查看项目主页',
+                onTap: () async {
+                  try {
+                    final opened = await launchUrl(
+                      Uri.parse('https://github.com/CLCTY/Sonorynth'),
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!opened && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('无法打开 GitHub 仓库')),
+                      );
+                    }
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('无法打开 GitHub 仓库')),
+                      );
+                    }
+                  }
+                },
               ),
               SettingsAction(
                 icon: Icons.info_rounded,
