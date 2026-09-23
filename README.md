@@ -1,16 +1,5 @@
 # Sonorynth
 
-本仓库包含两个支持在线功能的 Android 版本：
-
-| 版本 | 源码 | Android 包名 | 下载 |
-| --- | --- | --- | --- |
-| 原版（网易云在线） | 仓库根目录 | `app.sonorynth.player` | [v1.10.11](https://github.com/CLCTY/Sonorynth/releases/tag/v1.10.11) |
-| QQ 歌词扩展版 | [online/](online/) | `app.melodyflow.player` | [online-v1.10.12](https://github.com/CLCTY/Sonorynth/releases/tag/online-v1.10.12) |
-
-两个版本可以共存。QQ 歌词扩展版的功能、安装及歌词来源排序见 [扩展版说明](online/README.md)。
-
-## 原版（网易云在线）
-
 一款面向 Android 的 Flutter 音乐播放器，采用 Material 3 Expressive 设计风格，支持网易云音乐服务、账号登录、封面取色与逐字歌词。
 
 ## 已实现
@@ -21,11 +10,15 @@
 - 我的页网易云账号入口、本地歌单、新建歌单、收藏、最近播放和详细设置。
 - 播放器：队列、进度跳转、上一首/下一首、音质切换、定时关闭入口。
 - 点击播放页封面进入全屏歌词。
-- 歌词：LRC、内嵌逐字时间戳、网易云 YRC、翻译行、二分定位、平滑自动滚动、手势浏览后自动恢复、点击跳转、逐字颜色裁切高亮。
+- 歌词：LRC、内嵌逐字时间戳、网易云 YRC、QQ 音乐 QRC、AMLL TTML、翻译行、二分定位、平滑自动滚动、手势浏览后自动恢复、点击跳转、逐字颜色裁切高亮。
 - 当前歌曲封面种子色驱动 Material 3 全局主题；支持固定主题和深色模式。
 - 网易云兼容 API：搜索、每日推荐、新版歌词、音质 URL、二维码登录、账号资料。
 - 本地持久化：歌单、最近播放、设置、登录 Cookie、听歌统计。
 - 合法音源适配链：官方账号可用地址 → 用户配置且获授权的适配器。
+
+## 歌词来源
+
+歌词候选先显示来源，再显示歌手；可在歌词设置中调整 AMLL、网易云和 QQ 音乐的候选顺序。开启逐字歌词时，逐字结果优先。酷狗歌词与 KRC 解析已移除。QQ 歌词只提供文字与时间轴，不改变播放音源。QRC 兼容解码器改编自 MIT 授权的 WXRIW/QQMusicDecoder，许可文本见 [third_party_licenses/QQMusicDecoder.txt](third_party_licenses/QQMusicDecoder.txt)。
 
 ## 运行
 

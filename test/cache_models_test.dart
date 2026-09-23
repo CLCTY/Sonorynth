@@ -11,13 +11,13 @@ void main() {
       lrc: '[00:01]普通歌词',
       translation: '[00:01]translation',
       ttml: '<tt><body /></tt>',
-      krc: '[1000,500]<0,500,0>字',
+      qrc: '<QrcInfos />',
     );
     final restored = LyricsPayload.fromJson(payload.toJson());
     expect(restored.lrc, payload.lrc);
     expect(restored.translation, payload.translation);
     expect(restored.ttml, payload.ttml);
-    expect(restored.krc, payload.krc);
+    expect(restored.qrc, payload.qrc);
     expect(restored.isWordSynced, isTrue);
   });
 

@@ -149,28 +149,6 @@ void main() {
     expect(lines.single.translation, '翻译内容');
   });
 
-  test('parses Kugou KRC relative word timestamps', () {
-    final lines = LyricsParser.parseKrc(
-      '[5992,9304]<0,920,0>故<920,20,0>事<940,5594,0>的',
-    );
-    expect(lines.single.text, '故事的');
-    expect(lines.single.words.first.start.inMilliseconds, 5992);
-    expect(lines.single.words[1].start.inMilliseconds, 6912);
-  });
-
-  test('extracts embedded Kugou KRC translation', () {
-    const language =
-        'eyJ2ZXJzaW9uIjoxLCJjb250ZW50IjpbeyJ0eXBlIjoxLCJseXJpY0NvbnRlbnQiOltbIkhlbGxvIHdvcmxkIl0sWyJOZXh0IGxpbmUiXV19XX0=';
-    final lines = LyricsParser.parseKrc(
-      '[language:$language]\n'
-      '[1000,1000]<0,1000,0>你好\n'
-      '[3000,1000]<0,1000,0>下一句',
-    );
-    expect(lines, hasLength(2));
-    expect(lines.first.translation, 'Hello world');
-    expect(lines.last.translation, 'Next line');
-  });
-
   test('removes explicit songwriting credits without touching lyric text', () {
     final lines = LyricsParser.withoutCredits(
       LyricsParser.parse(

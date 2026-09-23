@@ -3624,6 +3624,12 @@ class SettingsScreen extends StatelessWidget {
                 onChanged: (v) => state.setSetting('showTranslation', v),
               ),
               SettingsAction(
+                icon: Icons.sort_rounded,
+                title: '歌词来源排序',
+                subtitle: state.lyricSourceOrderLabel,
+                onTap: () => _lyricSourceOrderSheet(context),
+              ),
+              SettingsAction(
                 icon: Icons.sync_rounded,
                 title: '歌词校准',
                 subtitle:
@@ -3770,11 +3776,11 @@ class SettingsScreen extends StatelessWidget {
               SettingsAction(
                 icon: Icons.info_rounded,
                 title: '关于 Sonorynth',
-                subtitle: '1.10.11 · Flutter / Material 3 Expressive',
+                subtitle: '1.10.12 · Flutter / Material 3 Expressive',
                 onTap: () => showAboutDialog(
                   context: context,
                   applicationName: 'Sonorynth',
-                  applicationVersion: '1.10.11',
+                  applicationVersion: '1.10.12',
                   applicationLegalese: 'Independent implementation.',
                 ),
               ),
@@ -6360,6 +6366,60 @@ Future<void> _lyricScrollMotionSheet(BuildContext context) async {
   );
 }
 
+Future<void> _lyricSourceOrderSheet(BuildContext context) async {
+  final state = MelodyScope.of(context);
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => AnimatedBuilder(
+      animation: state,
+      builder: (context, _) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('歌词来源排序', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              const Text('使用箭头调整搜索结果顺序。开启逐字歌词时，逐字结果优先。'),
+              const SizedBox(height: 12),
+              for (
+                var index = 0;
+                index < state.lyricSourceOrder.length;
+                index++
+              )
+                ListTile(
+                  leading: CircleAvatar(child: Text((index + 1).toString())),
+                  title: Text(state.lyricSourceOrder[index].label),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '上移',
+                        icon: const Icon(Icons.keyboard_arrow_up_rounded),
+                        onPressed: index == 0
+                            ? null
+                            : () => state.moveLyricSource(index, index - 1),
+                      ),
+                      IconButton(
+                        tooltip: '下移',
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        onPressed: index == state.lyricSourceOrder.length - 1
+                            ? null
+                            : () => state.moveLyricSource(index, index + 1),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Future<void> _lyricPickerSheet(BuildContext context) async {
   final state = MelodyScope.of(context);
   final controller = TextEditingController(
@@ -6417,6 +6477,14 @@ Future<void> _lyricPickerSheet(BuildContext context) async {
                           live.setSetting('karaokeLyrics', value);
                           live.loadLyrics();
                         },
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      ListTile(
+                        leading: const Icon(Icons.sort_rounded),
+                        title: const Text('歌词来源排序'),
+                        subtitle: Text(live.lyricSourceOrderLabel),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => _lyricSourceOrderSheet(context),
                       ),
                       const Divider(height: 1, indent: 56),
                       ListTile(
@@ -6514,7 +6582,7 @@ Future<void> _lyricPickerSheet(BuildContext context) async {
                               ),
                               title: Text(choice.track.title),
                               subtitle: Text(
-                                '${choice.track.artist} · ${choice.source}',
+                                '${choice.source} · ${choice.track.artist}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),

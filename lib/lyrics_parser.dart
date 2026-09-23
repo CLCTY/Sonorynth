@@ -133,6 +133,97 @@ class LyricsParser {
     return result;
   }
 
+  /// QQ QRC uses absolute millisecond word timestamps after each word.
+  static List<LyricLine> parseQrc(String source, {String? translation}) {
+    String content(String value) {
+      if (!value.contains('<Lyric_1')) return value;
+      final document = XmlDocument.parse(value);
+      for (final lyric in document.findAllElements('Lyric_1')) {
+        final text = lyric.getAttribute('LyricContent');
+        if (text != null && text.isNotEmpty) return text;
+      }
+      return '';
+    }
+
+    final linePattern = RegExp(r'^\[(\d+),(\d+)\](.*)$');
+    final wordPattern = RegExp(r'((?:(?!\(\d+,\d+\)).)*)\((\d+),(\d+)\)');
+    final translations = translation == null
+        ? <Duration, String>{}
+        : _plainMap(content(translation));
+    String? cleanTranslation(String? value) {
+      final text = value?.trim();
+      if (text == null ||
+          text.isEmpty ||
+          text == '//' ||
+          text.contains('享有本翻译作品的著作权')) {
+        return null;
+      }
+      return text;
+    }
+
+    String? translationAt(Duration start) {
+      final exact = translations[start];
+      if (exact != null) return cleanTranslation(exact);
+      String? closest;
+      var smallestGap = 121;
+      for (final entry in translations.entries) {
+        final gap = (entry.key.inMilliseconds - start.inMilliseconds).abs();
+        if (gap < smallestGap) {
+          smallestGap = gap;
+          closest = entry.value;
+        }
+      }
+      return cleanTranslation(closest);
+    }
+
+    final result = <LyricLine>[];
+    for (final input in const LineSplitter().convert(content(source))) {
+      final match = linePattern.firstMatch(input.trim());
+      if (match == null) continue;
+      final startMs = int.parse(match.group(1)!);
+      final durationMs = int.parse(match.group(2)!);
+      final body = match.group(3)!;
+      final words = <LyricWord>[];
+      var lastEnd = 0;
+      for (final word in wordPattern.allMatches(body)) {
+        final text = word.group(1)!;
+        final wordStart = int.parse(word.group(2)!);
+        final wordEnd = wordStart + int.parse(word.group(3)!);
+        if (text.isNotEmpty && wordEnd > wordStart) {
+          words.add(
+            LyricWord(
+              text,
+              Duration(milliseconds: wordStart),
+              Duration(milliseconds: wordEnd),
+            ),
+          );
+        }
+        lastEnd = word.end;
+      }
+      final trailing = body.substring(lastEnd);
+      if (words.isNotEmpty && trailing.isNotEmpty) {
+        final last = words.removeLast();
+        words.add(LyricWord(last.text + trailing, last.start, last.end));
+      }
+      final text = words.isEmpty
+          ? body.trim()
+          : words.map((w) => w.text).join();
+      if (text.isEmpty) continue;
+      final start = Duration(milliseconds: startMs);
+      result.add(
+        LyricLine(
+          start: start,
+          end: Duration(milliseconds: startMs + durationMs),
+          text: text,
+          words: words,
+          translation: translationAt(start),
+        ),
+      );
+    }
+    result.sort((a, b) => a.start.compareTo(b.start));
+    return result;
+  }
+
   static List<LyricLine> parseTtml(String source) {
     final document = XmlDocument.parse(source);
     final lines = <LyricLine>[];
@@ -237,47 +328,6 @@ class LyricsParser {
     return lines;
   }
 
-  static List<LyricLine> parseKrc(String source) {
-    final linePattern = RegExp(r'^\[(\d+),(\d+)\](.*)$');
-    final wordPattern = RegExp(r'<(\d+),(\d+),\d+>([^<]*)');
-    final result = <LyricLine>[];
-    final translations = _krcTranslations(source);
-    for (final input in const LineSplitter().convert(source)) {
-      final line = linePattern.firstMatch(input);
-      if (line == null) continue;
-      final lineStartMs = int.parse(line.group(1)!);
-      final lineDurationMs = int.parse(line.group(2)!);
-      final words = <LyricWord>[];
-      for (final match in wordPattern.allMatches(line.group(3)!)) {
-        final text = match.group(3) ?? '';
-        if (text.isEmpty) continue;
-        final startMs = lineStartMs + int.parse(match.group(1)!);
-        final durationMs = int.parse(match.group(2)!);
-        words.add(
-          LyricWord(
-            text,
-            Duration(milliseconds: startMs),
-            Duration(milliseconds: startMs + durationMs),
-          ),
-        );
-      }
-      if (words.isEmpty) continue;
-      final lineIndex = result.length;
-      result.add(
-        LyricLine(
-          start: Duration(milliseconds: lineStartMs),
-          end: Duration(milliseconds: lineStartMs + lineDurationMs),
-          text: words.map((word) => word.text).join(),
-          words: words,
-          translation: lineIndex < translations.length
-              ? translations[lineIndex]
-              : null,
-        ),
-      );
-    }
-    return result;
-  }
-
   /// Removes only standalone credit metadata with an explicit label and
   /// separator. Natural lyric sentences containing words such as “作词” or
   /// “作曲” are retained. Timings and word data of every retained line remain
@@ -329,32 +379,6 @@ class LyricsParser {
 
   static bool containsInstrumentalPlaceholder(Iterable<LyricLine> source) =>
       source.any((line) => _instrumentalPlaceholder.hasMatch(line.text));
-
-  static List<String> _krcTranslations(String source) {
-    final match = RegExp(
-      r'^\[language:([^\]]+)\]$',
-      multiLine: true,
-    ).firstMatch(source);
-    if (match == null) return const [];
-    try {
-      final root =
-          jsonDecode(utf8.decode(base64Decode(match.group(1)!)))
-              as Map<String, dynamic>;
-      final content = (root['content'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>();
-      final translated = content.where((item) => item['type'] == 1);
-      if (translated.isEmpty) return const [];
-      return (translated.first['lyricContent'] as List<dynamic>? ?? const [])
-          .map((line) {
-            if (line is List) return line.map((word) => '$word').join();
-            return '$line';
-          })
-          .map((line) => line.trim())
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
 
   /// Adds a timeline item for a genuine instrumental break. Explicit word
   /// timings are preferred; plain LRC lines use a conservative reading-time

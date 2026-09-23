@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
@@ -8,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'lyrics_parser.dart';
 import 'netease_local_api.dart';
+import 'qqmusic_lyrics.dart';
 
 String decodeTtmlBytes(List<int> bytes) {
   if (bytes.isEmpty) return '';
@@ -69,23 +69,28 @@ class LyricsPayload {
     this.translation = '',
     this.yrc = '',
     this.ttml = '',
-    this.krc = '',
+    this.qrc = '',
   });
   final String lrc;
   final String translation;
   final String yrc;
   final String ttml;
-  final String krc;
+  final String qrc;
 
   bool get isWordSynced =>
-      ttml.trim().isNotEmpty || krc.trim().isNotEmpty || yrc.trim().isNotEmpty;
+      ttml.trim().isNotEmpty || yrc.trim().isNotEmpty || qrc.trim().isNotEmpty;
+  bool get hasLyrics =>
+      lrc.trim().isNotEmpty ||
+      ttml.trim().isNotEmpty ||
+      yrc.trim().isNotEmpty ||
+      qrc.trim().isNotEmpty;
 
   Map<String, dynamic> toJson() => {
     'lrc': lrc,
     'translation': translation,
     'yrc': yrc,
     'ttml': ttml,
-    'krc': krc,
+    'qrc': qrc,
   };
 
   factory LyricsPayload.fromJson(Map<String, dynamic> json) => LyricsPayload(
@@ -93,8 +98,18 @@ class LyricsPayload {
     translation: '${json['translation'] ?? ''}',
     yrc: '${json['yrc'] ?? ''}',
     ttml: '${json['ttml'] ?? ''}',
-    krc: '${json['krc'] ?? ''}',
+    qrc: '${json['qrc'] ?? ''}',
   );
+}
+
+enum LyricSource {
+  amll('amll', 'AMLL TTML DB'),
+  netease('netease', '网易云音乐'),
+  qq('qq', 'QQ音乐');
+
+  const LyricSource(this.id, this.label);
+  final String id;
+  final String label;
 }
 
 class LyricChoice {
@@ -102,10 +117,12 @@ class LyricChoice {
     required this.track,
     required this.payload,
     this.source = '网易云音乐',
+    this.sourceType = LyricSource.netease,
   });
   final Track track;
   final LyricsPayload payload;
   final String source;
+  final LyricSource sourceType;
   bool get isWordSynced {
     try {
       if (payload.ttml.trim().isNotEmpty) {
@@ -116,9 +133,9 @@ class LyricChoice {
           return true;
         }
       }
-      if (payload.krc.trim().isNotEmpty &&
-          LyricsParser.parseKrc(
-            payload.krc,
+      if (payload.qrc.trim().isNotEmpty &&
+          LyricsParser.parseQrc(
+            payload.qrc,
           ).any((line) => line.words.isNotEmpty)) {
         return true;
       }
@@ -151,6 +168,7 @@ class NeteaseProfile {
 class NeteaseApi {
   NeteaseApi({NeteaseLocalApi? local}) : local = local ?? NeteaseLocalApi();
   final NeteaseLocalApi local;
+  final QqMusicLyrics _qqLyrics = QqMusicLyrics();
 
   bool get hasAuthenticatedSession => local.session.isAuthenticated;
 
@@ -326,7 +344,7 @@ class NeteaseApi {
   Future<LyricsPayload> lyrics(
     String id, {
     Track? track,
-    bool includeKugou = true,
+    bool includeQqFallback = true,
   }) async {
     if (!RegExp(r'^\d+$').hasMatch(id) && track != null) {
       try {
@@ -338,14 +356,15 @@ class NeteaseApi {
           return lyrics(
             matches.first.id,
             track: track,
-            includeKugou: includeKugou,
+            includeQqFallback: includeQqFallback,
           );
         }
       } catch (_) {
-        // A third-party catalog item can still use Kugou's fuzzy lyric match.
+        // A third-party catalog item can still match QQ by title and artist.
       }
-      final kugou = includeKugou ? await _bestKugouLyrics(track) : null;
-      return kugou ?? const LyricsPayload();
+      return includeQqFallback
+          ? await _bestQqLyrics(track) ?? const LyricsPayload()
+          : const LyricsPayload();
     }
     final amll = _amllLyrics(id);
     Map<String, dynamic> data = const {};
@@ -362,22 +381,37 @@ class NeteaseApi {
         'yrv': -1,
       });
     } catch (_) {
-      // AMLL and Kugou remain available when the platform lyric API fails.
+      // AMLL and QQ remain available when the platform lyric API fails.
     }
     String value(String key) =>
-        '${(data[key] as Map<String, dynamic>?)?['lyric'] ?? ''}';
-    final ttml = await amll;
-    final kugou = ttml.isEmpty && track != null && includeKugou
-        ? await _bestKugouLyrics(track)
-        : null;
-    final neteaseLrc = value('lrc');
-    return LyricsPayload(
-      lrc: neteaseLrc.isNotEmpty ? neteaseLrc : kugou?.lrc ?? '',
+        ((data[key] as Map<String, dynamic>?)?['lyric'] ?? '').toString();
+    final payload = LyricsPayload(
+      lrc: value('lrc'),
       translation: value('tlyric'),
       yrc: value('yrc'),
-      ttml: ttml,
-      krc: kugou?.krc ?? '',
+      ttml: await amll,
     );
+    if (payload.hasLyrics || track == null || !includeQqFallback) {
+      return payload;
+    }
+    return await _bestQqLyrics(track) ?? payload;
+  }
+
+  Future<LyricsPayload?> _bestQqLyrics(Track track) async {
+    try {
+      final match = await _qqLyrics.bestMatch(track);
+      if (match == null) return null;
+      final result = await _qqLyrics.lyrics(match);
+      if (!result.isNotEmpty) return null;
+      return LyricsPayload(
+        qrc: result.qrc,
+        lrc: result.lrc,
+        translation: result.translation,
+      );
+    } catch (_) {
+      // QQ lyrics are optional when existing sources cannot resolve a song.
+      return null;
+    }
   }
 
   Future<String> _amllLyrics(String id) async {
@@ -414,7 +448,7 @@ class NeteaseApi {
     try {
       searched = await search(keyword, limit: limit);
     } catch (_) {
-      // Preferred track and Kugou fuzzy search remain available.
+      // The preferred track and QQ search remain available.
     }
     final tracks = <Track>[
       if (preferredTrack != null && preferredTrack.id.isNotEmpty)
@@ -427,183 +461,66 @@ class NeteaseApi {
           final payload = await lyrics(
             track.id,
             track: track,
-            includeKugou: false,
+            includeQqFallback: false,
           );
-          return LyricChoice(
-            track: track,
-            payload: payload,
-            source: payload.ttml.isNotEmpty
-                ? 'AMLL TTML DB'
-                : payload.krc.isNotEmpty
-                ? '酷狗 KRC'
-                : '网易云音乐',
-          );
+          return [
+            if (payload.ttml.isNotEmpty)
+              LyricChoice(
+                track: track,
+                payload: LyricsPayload(ttml: payload.ttml),
+                source: LyricSource.amll.label,
+                sourceType: LyricSource.amll,
+              ),
+            if (payload.lrc.isNotEmpty || payload.yrc.isNotEmpty)
+              LyricChoice(
+                track: track,
+                payload: LyricsPayload(
+                  lrc: payload.lrc,
+                  yrc: payload.yrc,
+                  translation: payload.translation,
+                ),
+                source: LyricSource.netease.label,
+                sourceType: LyricSource.netease,
+              ),
+          ];
         } catch (_) {
-          return const LyricChoice(
-            track: Track(
-              id: '',
-              title: '',
-              artist: '',
-              album: '',
-              coverUrl: '',
-            ),
-            payload: LyricsPayload(),
-          );
+          return <LyricChoice>[];
         }
       }),
     );
-    final kugouFuture = _searchKugouLyrics(
-      keyword,
-      preferredTrack: preferredTrack,
-    );
-    final choices = await choicesFuture;
-    final valid = choices
-        .where((choice) => choice.track.id.isNotEmpty)
-        .toList();
-    final kugou = await kugouFuture;
-    final amll = valid.where((choice) => choice.payload.ttml.isNotEmpty);
-    final neteaseKaraoke = valid.where(
-      (choice) => choice.payload.ttml.isEmpty && choice.payload.yrc.isNotEmpty,
-    );
-    final neteasePlain = valid.where(
-      (choice) => choice.payload.ttml.isEmpty && choice.payload.yrc.isEmpty,
-    );
-    return [...amll, ...neteaseKaraoke, ...kugou, ...neteasePlain];
+    final qqFuture = _searchQqLyrics(keyword);
+    final grouped = await choicesFuture;
+    final qq = await qqFuture;
+    return [...grouped.expand((choices) => choices), ...qq];
   }
 
-  Future<LyricsPayload?> _bestKugouLyrics(Track track) async {
-    final candidates = await _kugouCandidates('${track.artist} ${track.title}');
-    if (candidates.isEmpty) return null;
-    String normalize(String value) => value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[（(][^）)]*[）)]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    final title = normalize(track.title);
-    final artist = normalize(track.artist);
-    int score(Map<String, dynamic> item) {
-      final song = normalize('${item['song'] ?? ''}');
-      final singer = normalize('${item['singer'] ?? ''}');
-      return (song == title
-              ? 4
-              : song.contains(title)
-              ? 2
-              : 0) +
-          (artist.isNotEmpty && singer.contains(artist) ? 2 : 0);
-    }
-
-    candidates.sort((left, right) => score(right).compareTo(score(left)));
-    return _downloadKugouLyrics(candidates.first);
-  }
-
-  Future<List<LyricChoice>> _searchKugouLyrics(
-    String keyword, {
-    Track? preferredTrack,
-  }) async {
-    final candidates = (await _kugouCandidates(keyword)).take(4).toList();
-    final values = await Future.wait(
-      candidates.map((candidate) async {
-        final payload = await _downloadKugouLyrics(candidate);
-        if (payload == null) return null;
-        return LyricChoice(
-          track: Track(
-            id: 'kugou-${candidate['id']}',
-            title: '${candidate['song'] ?? '未知歌曲'}',
-            artist: '${candidate['singer'] ?? '未知歌手'}',
-            album: '',
-            coverUrl: preferredTrack?.coverUrl ?? '',
-          ),
-          payload: payload,
-          source: payload.krc.isNotEmpty ? '酷狗 KRC' : '酷狗 LRC',
-        );
-      }),
-    );
-    return values.whereType<LyricChoice>().toList();
-  }
-
-  Future<List<Map<String, dynamic>>> _kugouCandidates(String keyword) async {
+  Future<List<LyricChoice>> _searchQqLyrics(String keyword) async {
     try {
-      final uri = Uri.https('lyrics.kugou.com', '/search', {
-        'ver': '1',
-        'man': 'yes',
-        'client': 'pc',
-        'keyword': keyword,
-      });
-      final response = await http.get(uri).timeout(const Duration(seconds: 4));
-      if (response.statusCode != 200) return const [];
-      final data =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-      return ((data['candidates'] ?? []) as List<dynamic>)
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      final candidates = await _qqLyrics.search(keyword, limit: 5);
+      final choices = await Future.wait(
+        candidates.map((candidate) async {
+          try {
+            final result = await _qqLyrics.lyrics(candidate);
+            if (!result.isNotEmpty) return null;
+            return LyricChoice(
+              track: candidate.track,
+              payload: LyricsPayload(
+                qrc: result.qrc,
+                lrc: result.lrc,
+                translation: result.translation,
+              ),
+              source: result.qrc.isNotEmpty ? 'QQ音乐 QRC' : 'QQ音乐 LRC',
+              sourceType: LyricSource.qq,
+            );
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      return choices.whereType<LyricChoice>().toList();
     } catch (_) {
       return const [];
     }
-  }
-
-  Future<LyricsPayload?> _downloadKugouLyrics(
-    Map<String, dynamic> candidate,
-  ) async {
-    final id = '${candidate['id'] ?? ''}';
-    final accessKey = '${candidate['accesskey'] ?? ''}';
-    if (id.isEmpty || accessKey.isEmpty) return null;
-    Future<String?> download(String format) async {
-      final uri = Uri.https('lyrics.kugou.com', '/download', {
-        'ver': '1',
-        'client': 'pc',
-        'id': id,
-        'accesskey': accessKey,
-        'fmt': format,
-      });
-      final response = await http.get(uri).timeout(const Duration(seconds: 4));
-      if (response.statusCode != 200) return null;
-      final data =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-      return data['content'] as String?;
-    }
-
-    try {
-      final content = await download('krc');
-      if (content != null && content.isNotEmpty) {
-        return LyricsPayload(krc: _decodeKrc(content));
-      }
-    } catch (_) {}
-    try {
-      final content = await download('lrc');
-      if (content != null && content.isNotEmpty) {
-        return LyricsPayload(lrc: utf8.decode(base64Decode(content)));
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  static String _decodeKrc(String content) {
-    const key = <int>[
-      64,
-      71,
-      97,
-      119,
-      94,
-      50,
-      116,
-      71,
-      81,
-      54,
-      49,
-      45,
-      206,
-      210,
-      110,
-      105,
-    ];
-    final raw = base64Decode(content);
-    if (raw.length <= 4) throw const FormatException('KRC 数据过短');
-    final encrypted = raw.sublist(4);
-    final decoded = List<int>.generate(
-      encrypted.length,
-      (index) => encrypted[index] ^ key[index % key.length],
-    );
-    return utf8.decode(ZLibDecoder().convert(decoded));
   }
 
   Future<QrLoginSession> createQrLogin() async {

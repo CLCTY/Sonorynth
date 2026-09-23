@@ -1,7 +1,7 @@
 name: sonorynth
 description: Material 3 Expressive Android music player with NetEase-compatible services.
 publish_to: none
-version: 1.10.11+45
+version: 1.10.12+46
 
 environment:
   sdk: '>=3.10.0 <4.0.0'

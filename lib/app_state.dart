@@ -49,7 +49,7 @@ class PlaybackTimeline {
 }
 
 class MelodyState extends ChangeNotifier {
-  static const _lyricCacheVersion = 3;
+  static const _lyricCacheVersion = 4;
   MelodyState(this.audioHandler) : player = audioHandler.player;
 
   @visibleForTesting
@@ -141,6 +141,7 @@ class MelodyState extends ChangeNotifier {
   int fontWeightLevel = 0;
   bool showTranslation = true;
   bool karaokeLyrics = true;
+  List<LyricSource> lyricSourceOrder = LyricSource.values.toList();
   bool privateMode = false;
   bool loggedIn = false;
   String userId = '';
@@ -222,6 +223,15 @@ class MelodyState extends ChangeNotifier {
     fontWeightLevel = (_prefs?.getInt('fontWeightLevel') ?? 0).clamp(0, 2);
     showTranslation = _prefs?.getBool('showTranslation') ?? true;
     karaokeLyrics = _prefs?.getBool('karaokeLyrics') ?? true;
+    final savedLyricSources = _prefs?.getStringList('lyricSourceOrder') ?? [];
+    lyricSourceOrder = LyricSource.values.toList()
+      ..sort((a, b) {
+        final aIndex = savedLyricSources.indexOf(a.id);
+        final bIndex = savedLyricSources.indexOf(b.id);
+        final aOrder = aIndex < 0 ? savedLyricSources.length + a.index : aIndex;
+        final bOrder = bIndex < 0 ? savedLyricSources.length + b.index : bIndex;
+        return aOrder.compareTo(bOrder);
+      });
     privateMode = _prefs?.getBool('privateMode') ?? false;
     lyricDelayMs = _prefs?.getInt('lyricDelayMs') ?? 0;
     lyricFrameRate = (_prefs?.getInt('lyricFrameRate') ?? 30).clamp(15, 60);
@@ -789,7 +799,7 @@ class MelodyState extends ChangeNotifier {
     final target = source ?? current;
     if (target.id.isEmpty) return;
     final cached = _lyricCache[target.id];
-    if (!force && cached != null) {
+    if (!force && cached != null && cached.hasLyrics) {
       if (current.id == target.id) _applyLyrics(cached);
       notifyListeners();
       return;
@@ -825,9 +835,16 @@ class MelodyState extends ChangeNotifier {
       );
       if (_useParsedLyrics(parsed)) return;
     }
-    if (payload.krc.isNotEmpty && karaokeLyrics) {
-      final parsed = LyricsParser.parseKrc(payload.krc);
-      if (_useParsedLyrics(parsed)) return;
+    if (payload.qrc.isNotEmpty && karaokeLyrics) {
+      try {
+        final parsed = LyricsParser.parseQrc(
+          payload.qrc,
+          translation: payload.translation,
+        );
+        if (_useParsedLyrics(parsed)) return;
+      } catch (_) {
+        // Continue with the plain lyric when QRC XML is malformed.
+      }
     }
     if (payload.lrc.isNotEmpty) {
       final parsed = LyricsParser.parse(
@@ -865,12 +882,55 @@ class MelodyState extends ChangeNotifier {
     notifyListeners();
     try {
       lyricChoices = await api.searchLyrics(query, preferredTrack: current);
+      _sortLyricChoices();
     } catch (error) {
       message = '歌词搜索失败：$error';
     } finally {
       searchingLyrics = false;
       notifyListeners();
     }
+  }
+
+  String get lyricSourceOrderLabel =>
+      lyricSourceOrder.map((source) => source.label).join(' › ');
+
+  void moveLyricSource(int from, int to) {
+    if (from < 0 ||
+        to < 0 ||
+        from >= lyricSourceOrder.length ||
+        to >= lyricSourceOrder.length ||
+        from == to) {
+      return;
+    }
+    final source = lyricSourceOrder.removeAt(from);
+    lyricSourceOrder.insert(to, source);
+    _prefs?.setStringList(
+      'lyricSourceOrder',
+      lyricSourceOrder.map((source) => source.id).toList(),
+    );
+    _sortLyricChoices();
+    notifyListeners();
+  }
+
+  void _sortLyricChoices() {
+    final ranked = [
+      for (var index = 0; index < lyricChoices.length; index++)
+        (
+          choice: lyricChoices[index],
+          index: index,
+          wordSynced: lyricChoices[index].isWordSynced,
+        ),
+    ];
+    ranked.sort((a, b) {
+      if (karaokeLyrics && a.wordSynced != b.wordSynced) {
+        return a.wordSynced ? -1 : 1;
+      }
+      final sourceOrder = lyricSourceOrder
+          .indexOf(a.choice.sourceType)
+          .compareTo(lyricSourceOrder.indexOf(b.choice.sourceType));
+      return sourceOrder != 0 ? sourceOrder : a.index.compareTo(b.index);
+    });
+    lyricChoices = ranked.map((entry) => entry.choice).toList();
   }
 
   void selectLyrics(LyricChoice choice) {
@@ -882,7 +942,7 @@ class MelodyState extends ChangeNotifier {
           : cachedTranslation,
       yrc: choice.payload.yrc,
       ttml: choice.payload.ttml,
-      krc: choice.payload.krc,
+      qrc: choice.payload.qrc,
     );
     _applyLyrics(payload);
     if (current.id.isNotEmpty) _cacheLyrics(current.id, payload);
@@ -1278,6 +1338,7 @@ class MelodyState extends ChangeNotifier {
         privateMode = value;
     }
     _prefs?.setBool(key, value);
+    if (key == 'karaokeLyrics') _sortLyricChoices();
     if (key == 'dynamicColor') _notifyThemeChanged();
     notifyListeners();
     if (key == 'dynamicColor' && value && hasCurrent) {
