@@ -14,6 +14,8 @@ import 'lyrics_parser.dart';
 import 'm3e_beat_stage.dart';
 import 'models.dart';
 import 'lyric_colors.dart';
+import 'experience_preferences.dart';
+import 'onboarding.dart';
 
 // Keep album hue in the glyphs while reserving luminance for readability.
 Color _albumLyricInk(List<Color> palette, bool dark) {
@@ -127,7 +129,9 @@ class _AppShellState extends State<AppShell> {
                   ),
                 ),
               ),
-              if (state.hasCurrent)
+              if (state.hasCurrent &&
+                  (selectedPage != 0 ||
+                      state.homeLayout.isVisible(HomeElement.miniPlayer)))
                 Positioned(
                   left: wide ? 12 : 0,
                   right: wide ? 12 : 0,
@@ -233,12 +237,19 @@ class _GlassSurface extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
-double _shellBottomClearance(BuildContext context, MelodyState state) {
+double _shellBottomClearance(
+  BuildContext context,
+  MelodyState state, {
+  bool isHome = false,
+}) {
   final systemBottom = MediaQuery.paddingOf(context).bottom;
+  final hasPlayer =
+      state.hasCurrent &&
+      (!isHome || state.homeLayout.isVisible(HomeElement.miniPlayer));
   if (MediaQuery.sizeOf(context).width >= 840) {
-    return state.hasCurrent ? 112 + systemBottom : 28 + systemBottom;
+    return hasPlayer ? 112 + systemBottom : 28 + systemBottom;
   }
-  return state.hasCurrent ? 106 : 16;
+  return hasPlayer ? 106 : 16;
 }
 
 class PageTitle extends StatelessWidget {
@@ -247,10 +258,14 @@ class PageTitle extends StatelessWidget {
     super.key,
     this.subtitle,
     this.actions = const [],
+    this.showTitle = true,
+    this.showSubtitle = true,
   });
   final String title;
   final String? subtitle;
   final List<Widget> actions;
+  final bool showTitle;
+  final bool showSubtitle;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -262,22 +277,23 @@ class PageTitle extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (subtitle != null)
+              if (subtitle != null && showSubtitle)
                 Text(
                   subtitle!,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                  fontWeight: MelodyScope.of(context).emphasisWeight,
-                  letterSpacing: -1.2,
+              if (showTitle)
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    fontWeight: MelodyScope.of(context).emphasisWeight,
+                    letterSpacing: -1.2,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -293,6 +309,13 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = MelodyScope.of(context);
+    final visible = state.homeLayout.isVisible;
+    final hasOverview = [
+      HomeElement.likedSongs,
+      HomeElement.playlists,
+      HomeElement.recentPlays,
+      HomeElement.audioQuality,
+    ].any(visible);
     final continueTracks = state.recent.isEmpty ? state.queue : state.recent;
     final now = DateTime.now();
     final hour = now.hour;
@@ -315,117 +338,151 @@ class HomeScreen extends StatelessWidget {
     return CustomScrollView(
       key: const PageStorageKey('home-scroll'),
       slivers: [
-        SliverToBoxAdapter(child: PageTitle(greeting, subtitle: 'SONORYNTH')),
         SliverToBoxAdapter(
-          child: SectionHeader(
-            '继续聆听',
-            action: continueTracks.isEmpty ? null : '播放全部',
-            onTap: continueTracks.isEmpty
-                ? null
-                : () => state.playTrack(
-                    continueTracks.first,
-                    from: continueTracks,
-                  ),
-          ),
-        ),
-        if (continueTracks.isEmpty)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
-              child: Text('播放歌曲后会在这里继续上次的聆听。'),
-            ),
-          )
-        else
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 190,
-              child: HorizontalTracks(
-                tracks: continueTracks.take(8).toList(),
-                shapeId: 'continue_listening',
-                shapeTitle: '继续聆听整组形状',
-              ),
-            ),
-          ),
-        const SliverToBoxAdapter(child: SectionHeader('你的音乐概览')),
-        SliverToBoxAdapter(
-          child: AdaptiveM3Grid(
-            preferredHeight: 148,
-            children: [
-              StatTile(
-                icon: Icons.favorite_rounded,
-                value: '${state.likedTrackIds.length}',
-                label: '喜欢的歌曲',
-                tone: 0,
-                shape: M3ContentShape.values[state.cardShape('liked', 0)],
-                onTap: () {
-                  if (state.cloudPlaylists.isNotEmpty) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PlaylistScreen(
-                          playlist: state.cloudPlaylists.first,
-                        ),
-                      ),
-                    );
-                  } else {
-                    _openTrackCollection(
-                      context,
-                      title: '喜欢的歌曲',
-                      tracks: _knownLikedTracks(state),
-                      emptyMessage: '暂时没有可显示的喜欢歌曲',
-                    );
-                  }
-                },
-                onLongPress: () =>
-                    _editOverviewCardShape(context, state, 'liked'),
-              ),
-              StatTile(
-                icon: Icons.queue_music_rounded,
-                value: '${state.allPlaylists.length}',
-                label: '创建的歌单',
-                tone: 1,
-                shape: M3ContentShape.values[state.cardShape('playlists', 1)],
-                onTap: () => Navigator.push(
+          child: PageTitle(
+            greeting,
+            subtitle: 'SONORYNTH',
+            showTitle: visible(HomeElement.greeting),
+            showSubtitle: visible(HomeElement.branding),
+            actions: [
+              ExpressiveIconButton(
+                tooltip: '主页设置',
+                tonal: true,
+                icon: const Icon(Icons.tune_rounded),
+                onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        PlaylistCollectionScreen(playlists: state.allPlaylists),
+                        const SettingsScreen(section: SettingsSection.home),
                   ),
                 ),
-                onLongPress: () =>
-                    _editOverviewCardShape(context, state, 'playlists'),
-              ),
-              StatTile(
-                icon: Icons.history_rounded,
-                value: '${state.recent.length}',
-                label: '最近播放',
-                tone: 2,
-                shape: M3ContentShape.values[state.cardShape('recent', 2)],
-                onTap: () => _openTrackCollection(
-                  context,
-                  title: '最近播放',
-                  tracks: state.recent,
-                  emptyMessage: '还没有播放历史',
-                ),
-                onLongPress: () =>
-                    _editOverviewCardShape(context, state, 'recent'),
-              ),
-              StatTile(
-                icon: Icons.high_quality_rounded,
-                value: state.quality.label,
-                label: '当前音质',
-                tone: 3,
-                shape: M3ContentShape.values[state.cardShape('quality', 3)],
-                onTap: () => _qualitySheet(context),
-                onLongPress: () =>
-                    _editOverviewCardShape(context, state, 'quality'),
               ),
             ],
           ),
         ),
-        SliverToBoxAdapter(child: WeeklyListeningCard(state: state)),
+        if (visible(HomeElement.continueListening)) ...[
+          SliverToBoxAdapter(
+            child: SectionHeader(
+              '继续聆听',
+              action: continueTracks.isEmpty ? null : '播放全部',
+              onTap: continueTracks.isEmpty
+                  ? null
+                  : () => state.playTrack(
+                      continueTracks.first,
+                      from: continueTracks,
+                    ),
+            ),
+          ),
+          if (continueTracks.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 20),
+                child: Text('播放歌曲后会在这里继续上次的聆听。'),
+              ),
+            )
+          else
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 190,
+                child: HorizontalTracks(
+                  tracks: continueTracks.take(8).toList(),
+                  shapeId: 'continue_listening',
+                  shapeTitle: '继续聆听整组形状',
+                ),
+              ),
+            ),
+        ],
+        if (hasOverview && visible(HomeElement.overviewHeading))
+          const SliverToBoxAdapter(child: SectionHeader('你的音乐概览')),
+        if (hasOverview)
+          SliverToBoxAdapter(
+            child: AdaptiveM3Grid(
+              preferredHeight: 148,
+              children: [
+                if (visible(HomeElement.likedSongs))
+                  StatTile(
+                    icon: Icons.favorite_rounded,
+                    value: '${state.likedTrackIds.length}',
+                    label: '喜欢的歌曲',
+                    tone: 0,
+                    shape: M3ContentShape.values[state.cardShape('liked', 0)],
+                    onTap: () {
+                      if (state.cloudPlaylists.isNotEmpty) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlaylistScreen(
+                              playlist: state.cloudPlaylists.first,
+                            ),
+                          ),
+                        );
+                      } else {
+                        _openTrackCollection(
+                          context,
+                          title: '喜欢的歌曲',
+                          tracks: _knownLikedTracks(state),
+                          emptyMessage: '暂时没有可显示的喜欢歌曲',
+                        );
+                      }
+                    },
+                    onLongPress: () =>
+                        _editOverviewCardShape(context, state, 'liked'),
+                  ),
+                if (visible(HomeElement.playlists))
+                  StatTile(
+                    icon: Icons.queue_music_rounded,
+                    value: '${state.allPlaylists.length}',
+                    label: '创建的歌单',
+                    tone: 1,
+                    shape:
+                        M3ContentShape.values[state.cardShape('playlists', 1)],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlaylistCollectionScreen(
+                          playlists: state.allPlaylists,
+                        ),
+                      ),
+                    ),
+                    onLongPress: () =>
+                        _editOverviewCardShape(context, state, 'playlists'),
+                  ),
+                if (visible(HomeElement.recentPlays))
+                  StatTile(
+                    icon: Icons.history_rounded,
+                    value: '${state.recent.length}',
+                    label: '最近播放',
+                    tone: 2,
+                    shape: M3ContentShape.values[state.cardShape('recent', 2)],
+                    onTap: () => _openTrackCollection(
+                      context,
+                      title: '最近播放',
+                      tracks: state.recent,
+                      emptyMessage: '还没有播放历史',
+                    ),
+                    onLongPress: () =>
+                        _editOverviewCardShape(context, state, 'recent'),
+                  ),
+                if (visible(HomeElement.audioQuality))
+                  StatTile(
+                    icon: Icons.high_quality_rounded,
+                    value: state.quality.label,
+                    label: '当前音质',
+                    tone: 3,
+                    shape: M3ContentShape.values[state.cardShape('quality', 3)],
+                    onTap: () => _qualitySheet(context),
+                    onLongPress: () =>
+                        _editOverviewCardShape(context, state, 'quality'),
+                  ),
+              ],
+            ),
+          ),
+        if (visible(HomeElement.weeklyListening))
+          SliverToBoxAdapter(child: WeeklyListeningCard(state: state)),
         SliverToBoxAdapter(
-          child: SizedBox(height: _shellBottomClearance(context, state)),
+          child: SizedBox(
+            height: _shellBottomClearance(context, state, isHome: true),
+          ),
         ),
       ],
     );
@@ -3507,6 +3564,7 @@ enum SettingsSection {
   playback('播放与音质', '默认音质与播放偏好', Icons.play_circle_outline_rounded),
   lyrics('歌词与动画', '逐字、翻译、校准与换行弹簧', Icons.lyrics_outlined),
   appearance('外观与主题', '主题、封面取色与字重', Icons.palette_outlined),
+  home('主页布局', '逐项选择主页内容', Icons.dashboard_customize_outlined),
   performance('性能与存储', '高效渲染与本地存储说明', Icons.speed_rounded),
   account('账号与服务', '登录、同步与授权音源', Icons.account_circle_outlined),
   records('记录与关于', '聆听记录、隐私与版本信息', Icons.history_rounded);
@@ -3532,12 +3590,25 @@ class SettingsScreen extends StatelessWidget {
           ),
           children: [
             SettingsGroup('聆听体验', [
-              for (final item in SettingsSection.values.take(3))
+              for (final item in SettingsSection.values.take(4))
                 _category(context, item),
             ]),
             SettingsGroup('应用与资料', [
-              for (final item in SettingsSection.values.skip(3))
+              for (final item in SettingsSection.values.skip(4))
                 _category(context, item),
+            ]),
+            SettingsGroup('开始使用', [
+              SettingsAction(
+                icon: Icons.auto_awesome_rounded,
+                title: '欢迎与快速设置',
+                subtitle: '功能介绍、外观与主页偏好',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const WelcomeScreen(revisit: true),
+                  ),
+                ),
+              ),
             ]),
           ],
         ),
@@ -3548,6 +3619,34 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.only(bottom: 40),
         children: [
+          if (section == SettingsSection.home) ...[
+            const _SettingsNote('关闭只会隐藏主页内容，不会删除音乐或记录。导航和设置入口始终保留。'),
+            HomeLayoutControls(
+              layout: state.homeLayout,
+              onPresetSelected: (layout) async {
+                try {
+                  await state.setHomeLayout(layout);
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('主页设置暂未保存，请重试。')),
+                    );
+                  }
+                }
+              },
+              onChanged: (element, visible) async {
+                try {
+                  await state.setHomeElementVisible(element, visible);
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('主页设置暂未保存，请重试。')),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
           if (section == SettingsSection.account)
             SettingsGroup('账号与服务', [
               SettingsAction(
@@ -3827,6 +3926,7 @@ Widget _category(BuildContext context, SettingsSection section) {
       '${state.karaokeLyrics ? '逐字开启' : '逐字关闭'} · ${state.lyricScrollPreset.label} · ${state.lyricFrameRate} FPS',
     SettingsSection.appearance =>
       '${state.themeModeLabel} · ${state.dynamicColor ? '封面取色' : '固定主题色'}',
+    SettingsSection.home => '逐项显示或关闭主页内容',
     SettingsSection.performance =>
       '高效渲染${state.efficientRendering ? '开启' : '关闭'} · 存储说明',
     SettingsSection.account =>
@@ -5708,6 +5808,95 @@ class _PlayerAction extends StatelessWidget {
   );
 }
 
+class HomeLayoutControls extends StatelessWidget {
+  const HomeLayoutControls({
+    super.key,
+    required this.layout,
+    required this.onChanged,
+    required this.onPresetSelected,
+  });
+  final HomeLayoutPreferences layout;
+  final void Function(HomeElement, bool) onChanged;
+  final ValueChanged<HomeLayoutPreferences> onPresetSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final minimal = HomeLayoutPreferences(
+      hidden: Set.unmodifiable(
+        HomeElement.values.where(
+          (element) => !{
+            HomeElement.greeting,
+            HomeElement.continueListening,
+            HomeElement.miniPlayer,
+          }.contains(element),
+        ),
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '已显示 ${layout.visibleCount} / ${HomeElement.values.length} 项',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('全部显示'),
+                    selected: layout.hidden.isEmpty,
+                    onSelected: (_) =>
+                        onPresetSelected(const HomeLayoutPreferences()),
+                  ),
+                  ChoiceChip(
+                    label: const Text('精简主页'),
+                    selected:
+                        layout.hidden.length == minimal.hidden.length &&
+                        layout.hidden.containsAll(minimal.hidden),
+                    onSelected: (_) => onPresetSelected(minimal),
+                  ),
+                  ChoiceChip(
+                    label: const Text('全部关闭'),
+                    selected: layout.visibleCount == 0,
+                    onSelected: (_) => onPresetSelected(
+                      HomeLayoutPreferences(
+                        hidden: Set.unmodifiable(HomeElement.values),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        for (final group in [
+          ('顶部与继续聆听', HomeElement.values.take(3)),
+          ('音乐概览', HomeElement.values.skip(3).take(5)),
+          ('统计与播放', HomeElement.values.skip(8)),
+        ])
+          SettingsGroup(group.$1, [
+            for (final element in group.$2)
+              SettingsSwitch(
+                key: ValueKey('home-toggle-${element.name}'),
+                icon: element.icon,
+                title: element.title,
+                subtitle: element.description,
+                value: layout.isVisible(element),
+                onChanged: (value) => onChanged(element, value),
+              ),
+          ]),
+      ],
+    );
+  }
+}
+
 class SettingsGroup extends StatelessWidget {
   const SettingsGroup(this.title, this.children, {super.key});
   final String title;
@@ -5738,7 +5927,7 @@ class SettingsGroup extends StatelessWidget {
                 bottom: Radius.circular(index == children.length - 1 ? 24 : 4),
               ),
               clipBehavior: Clip.antiAlias,
-              child: children[index],
+              child: SizedBox(width: double.infinity, child: children[index]),
             ),
           ),
       ],

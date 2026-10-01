@@ -5,7 +5,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val signingPath = System.getenv("SONORYNTH_SIGNING_PROPERTIES")
+val isPreviewBuild = System.getenv("SONORYNTH_PREVIEW_BUILD") == "true"
+val signingPath = if (isPreviewBuild) null else System.getenv("SONORYNTH_SIGNING_PROPERTIES")
 val releaseSigning = Properties()
 if (!signingPath.isNullOrBlank()) {
     file(signingPath).inputStream().use { releaseSigning.load(it) }
@@ -26,6 +27,8 @@ android {
 
     defaultConfig {
         applicationId = "app.sonorynth.player"
+        if (isPreviewBuild) applicationIdSuffix = ".preview"
+        manifestPlaceholders["appLabel"] = if (isPreviewBuild) "Sonorynth 预览版" else "Sonorynth"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -45,7 +48,11 @@ android {
 
     buildTypes {
         named("release") {
-            signingConfig = if (!signingPath.isNullOrBlank()) signingConfigs.getByName("release") else null
+            signingConfig = when {
+                isPreviewBuild -> signingConfigs.getByName("debug")
+                !signingPath.isNullOrBlank() -> signingConfigs.getByName("release")
+                else -> null
+            }
         }
     }
 }

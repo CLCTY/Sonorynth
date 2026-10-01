@@ -1,0 +1,110 @@
+name: Android preview APK
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - 'preview/**'
+      - 'codex/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-preview-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Check and build installable preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SONORYNTH_PREVIEW_BUILD: 'true'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze
+        run: flutter analyze --no-pub
+
+      - name: Test
+        run: flutter test --no-pub
+
+      - name: Build signed preview APKs
+        run: flutter build apk --release --no-pub --target-platform android-arm,android-arm64 --split-per-abi
+
+      - name: Prepare downloads and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/preview-artifacts
+          for abi in arm64-v8a armeabi-v7a; do
+            destination="build/preview-artifacts/$abi"
+            mkdir -p "$destination"
+            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$destination/sonorynth-preview-$abi.apk"
+            (
+              cd "$destination"
+              sha256sum "sonorynth-preview-$abi.apk" > SHA256SUMS.txt
+            )
+            cat > "$destination/README.txt" <<EOF
+          Sonorynth 预览版（仅供验证）
+          Source: $GITHUB_REPOSITORY
+          Commit: $GITHUB_SHA
+          Architecture: $abi
+          Package: app.sonorynth.player.preview
+
+          下载后解压 ZIP，安装其中的 APK。
+          大多数较新的 Android 手机请选择 arm64-v8a，较旧的 32 位手机请选择 armeabi-v7a。
+          此包使用 Release 编译优化及测试签名，并非正式发行版。
+          预览版与正式版独立安装，数据互不影响，不需要正式签名密钥。
+          不同 CI 构建可能使用不同测试证书；若无法更新，需先卸载旧预览版，预览版数据会被清除。
+          EOF
+          done
+          {
+            echo '### 预览版 APK 下载'
+            echo ''
+            echo '在本次运行页面的 **Artifacts** 下载对应 ZIP，解压后安装 APK。'
+            echo '多数手机选择 **sonorynth-preview-arm64-v8a**；旧款 32 位手机选择 **sonorynth-preview-armeabi-v7a**。'
+            echo ''
+            echo '测试签名，独立包名 `app.sonorynth.player.preview`，可与正式版共存。跨次构建可能需要卸载旧预览版，届时仅预览版数据会被清除。'
+            echo ''
+            echo '产物保留 14 天；下载通常需要登录有仓库访问权限的 GitHub 账号。'
+            echo ''
+            ls -lh build/preview-artifacts/*/*.apk
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ARM64 preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonorynth-preview-arm64-v8a
+          path: build/preview-artifacts/arm64-v8a/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload ARM preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonorynth-preview-armeabi-v7a
+          path: build/preview-artifacts/armeabi-v7a/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

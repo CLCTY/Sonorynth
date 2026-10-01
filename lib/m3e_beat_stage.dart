@@ -47,7 +47,7 @@ class AlbumBackground extends StatelessWidget {
         trackId: trackId,
         coverUrl: coverUrl,
         lowPower: lowPower,
-        animate: animate,
+        animate: animate && !MediaQuery.disableAnimationsOf(context),
       );
     }
     return IgnorePointer(

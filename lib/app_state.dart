@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'artwork_image.dart';
 import 'audio_handler.dart';
+import 'experience_preferences.dart';
 import 'lyrics_parser.dart';
 import 'models.dart';
 import 'netease_api.dart';
@@ -67,6 +68,10 @@ class MelodyState extends ChangeNotifier {
   final MelodyAudioHandler audioHandler;
   final AudioPlayer player;
   SharedPreferences? _prefs;
+  ExperiencePreferences? _experience;
+  HomeLayoutPreferences get homeLayout =>
+      _experience?.homeLayout ?? const HomeLayoutPreferences();
+  bool get onboardingCompleted => _experience?.completed ?? false;
   late final NeteaseApi api;
   late SourceResolver sources;
   StreamSubscription<Duration>? _positionSub;
@@ -192,6 +197,7 @@ class MelodyState extends ChangeNotifier {
 
   Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    _experience = await ExperiencePreferences.load(_prefs!);
     adapterEndpoint = _prefs?.getString('adapterEndpoint') ?? '';
     dynamicColor = _prefs?.getBool('dynamicColor') ?? true;
     // Restore the original static cover-derived surface for existing installs
@@ -1320,6 +1326,49 @@ class MelodyState extends ChangeNotifier {
     adapterEndpoint = sourceUrl.trim();
     await _prefs?.setString('adapterEndpoint', adapterEndpoint);
     _rebuildSources();
+    notifyListeners();
+  }
+
+  Future<void> setHomeElementVisible(HomeElement element, bool visible) async {
+    await setHomeLayout(homeLayout.withVisibility(element, visible));
+  }
+
+  Future<void> setHomeLayout(HomeLayoutPreferences layout) async {
+    final saving = _experience!.setHomeLayout(layout);
+    notifyListeners();
+    try {
+      await saving;
+    } catch (_) {
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> completeOnboarding({QuickSetupChoices? choices}) async {
+    await _experience!.finish(choices: choices);
+    if (choices != null) {
+      themeMode = choices.themeMode;
+      quality = choices.quality;
+      dynamicColor = choices.dynamicColor;
+      karaokeLyrics = choices.karaokeLyrics;
+      showTranslation = choices.showTranslation;
+      efficientRendering = choices.efficientRendering;
+      privateMode = choices.privateMode;
+      gradientPlayerBackground = choices.gradientPlayerBackground;
+      singleColorPlayerBackground = choices.singleColorPlayerBackground;
+      fontWeightLevel = choices.fontWeightLevel;
+      lyricFrameRate = choices.lyricFrameRate;
+      lyricScrollPreset =
+          LyricScrollPreset.values[choices.lyricScrollPresetIndex];
+      if (lyricScrollPreset != LyricScrollPreset.custom) {
+        lyricScrollMass = lyricScrollPreset.mass;
+        lyricScrollStiffness = lyricScrollPreset.stiffness;
+        lyricScrollDamping = lyricScrollPreset.damping;
+      }
+      _sortLyricChoices();
+      _notifyThemeChanged();
+      if (hasCurrent && dynamicColor) unawaited(_extractCoverColor(current));
+    }
     notifyListeners();
   }
 

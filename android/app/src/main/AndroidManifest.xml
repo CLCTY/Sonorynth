@@ -14,7 +14,7 @@ found in the LICENSE file. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
 
-    <application android:label="Sonorynth" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:usesCleartextTraffic="true">
+    <application android:label="${appLabel}" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:usesCleartextTraffic="true">
         <activity android:name="com.ryanheise.audioservice.AudioServiceActivity"
                   android:exported="true"
                   android:theme="@android:style/Theme.Black.NoTitleBar"

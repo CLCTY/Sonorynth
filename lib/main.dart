@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:audio_service/audio_service.dart';
 import 'app_state.dart';
 import 'audio_handler.dart';
-import 'ui.dart';
+import 'onboarding.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,7 +79,7 @@ class MelodyApp extends StatelessWidget {
             ),
             child: child!,
           ),
-          home: const AppShell(),
+          home: const FirstLaunchGate(),
         );
       },
     );
