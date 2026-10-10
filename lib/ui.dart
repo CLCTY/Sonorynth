@@ -2095,7 +2095,7 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
                       size: 44,
                       tooltip: '歌词与时间',
                       tonal: true,
-                      onPressed: () => _lyricPickerSheet(context),
+                      onPressed: () => showLyricPickerSheet(context),
                       icon: const Icon(Icons.tune_rounded),
                     ),
                   ],
@@ -3011,7 +3011,7 @@ class _LyricsScreenState extends State<LyricsScreen>
                       ),
                       const SizedBox(width: 4),
                       ExpressiveIconButton(
-                        onPressed: () => _lyricPickerSheet(context),
+                        onPressed: () => showLyricPickerSheet(context),
                         tooltip: '选择歌词',
                         tonal: true,
                         backgroundColor: lyricInk.withValues(alpha: .12),
@@ -3737,7 +3737,7 @@ class SettingsScreen extends StatelessWidget {
                 title: '歌词校准',
                 subtitle:
                     '${state.lyricDelayMs >= 0 ? '+' : ''}${state.lyricDelayMs} ms · 全局',
-                onTap: () => _lyricPickerSheet(context),
+                onTap: () => showLyricPickerSheet(context),
               ),
             ]),
           if (section == SettingsSection.lyrics)
@@ -6637,191 +6637,236 @@ Future<void> _lyricSourceOrderSheet(BuildContext context) async {
   );
 }
 
-Future<void> _lyricPickerSheet(BuildContext context) async {
+Future<void> showLyricPickerSheet(BuildContext context) async {
   final state = MelodyScope.of(context);
   final controller = TextEditingController(
     text: '${state.current.title} ${state.current.artist}'.trim(),
   );
-  if (state.lyricChoices.isEmpty ||
-      state.lyricChoicesTrackId != state.current.id) {
-    if (!state.hasCachedCurrentLyrics) {
-      unawaited(state.searchLyrics(controller.text));
-    }
+  // Cached playback lyrics should not hide the alternatives for this song.
+  if (!state.searchingLyrics &&
+      (state.lyricChoices.isEmpty ||
+          state.lyricChoicesTrackId != state.current.id)) {
+    unawaited(state.searchLyrics(controller.text));
   }
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (context) {
       final live = MelodyScope.of(context);
       final scheme = Theme.of(context).colorScheme;
-      return SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * .78,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              0,
-              16,
-              MediaQuery.viewInsetsOf(context).bottom + 12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('歌词与时间', style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 12),
-                Material(
-                  color: scheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(24),
-                  clipBehavior: Clip.antiAlias,
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: .78,
+          minChildSize: .45,
+          maxChildSize: .95,
+          builder: (context, scrollController) => CustomScrollView(
+            controller: scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SwitchListTile(
-                        secondary: const Icon(Icons.translate_rounded),
-                        title: const Text('显示翻译'),
-                        subtitle: const Text('有翻译时显示在原文下方'),
-                        value: live.showTranslation,
-                        onChanged: (value) =>
-                            live.setSetting('showTranslation', value),
+                      Text(
+                        '选择歌词',
+                        style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      const Divider(height: 1, indent: 56),
-                      SwitchListTile(
-                        secondary: const Icon(Icons.graphic_eq_rounded),
-                        title: const Text('逐字歌词优先'),
-                        subtitle: const Text('优先选择带逐字时间轴的结果'),
-                        value: live.karaokeLyrics,
-                        onChanged: (value) {
-                          live.setSetting('karaokeLyrics', value);
-                          live.loadLyrics();
-                        },
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      ListTile(
-                        leading: const Icon(Icons.sort_rounded),
-                        title: const Text('歌词来源排序'),
-                        subtitle: Text(live.lyricSourceOrderLabel),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => _lyricSourceOrderSheet(context),
-                      ),
-                      const Divider(height: 1, indent: 56),
-                      ListTile(
-                        leading: const Icon(Icons.swap_vert_circle_rounded),
-                        title: const Text('换行弹簧'),
-                        subtitle: Text(
-                          '${live.lyricScrollPreset.label} · 响应 ${live.lyricScrollStiffness.round()} · 阻尼 ${live.lyricScrollDamping.round()}',
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: controller,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: live.searchLyrics,
+                        decoration: InputDecoration(
+                          hintText: '模糊搜索歌曲、歌手或专辑',
+                          prefixIcon: const Icon(Icons.manage_search_rounded),
+                          suffixIcon: IconButton.filledTonal(
+                            onPressed: () => live.searchLyrics(controller.text),
+                            icon: const Icon(Icons.search_rounded),
+                          ),
+                          filled: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => _lyricScrollMotionSheet(context),
                       ),
-                      const Divider(height: 1, indent: 56),
-                      ListTile(
-                        leading: const Icon(Icons.speed_rounded),
-                        title: const Text('歌词动画帧率'),
-                        subtitle: Text(
-                          '${live.lyricFrameRate} FPS · 默认 30 FPS',
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => _lyricFrameRateSheet(context),
+
+                      const SizedBox(height: 12),
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: const Text('歌词显示与时间设置'),
+                        children: [
+                          Material(
+                            color: scheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(24),
+                            clipBehavior: Clip.antiAlias,
+                            child: Column(
+                              children: [
+                                SwitchListTile(
+                                  secondary: const Icon(
+                                    Icons.translate_rounded,
+                                  ),
+                                  title: const Text('显示翻译'),
+                                  subtitle: const Text('有翻译时显示在原文下方'),
+                                  value: live.showTranslation,
+                                  onChanged: (value) =>
+                                      live.setSetting('showTranslation', value),
+                                ),
+                                const Divider(height: 1, indent: 56),
+                                SwitchListTile(
+                                  secondary: const Icon(
+                                    Icons.graphic_eq_rounded,
+                                  ),
+                                  title: const Text('逐字歌词优先'),
+                                  subtitle: const Text('优先选择带逐字时间轴的结果'),
+                                  value: live.karaokeLyrics,
+                                  onChanged: (value) {
+                                    live.setSetting('karaokeLyrics', value);
+                                    live.loadLyrics();
+                                  },
+                                ),
+                                const Divider(height: 1, indent: 56),
+                                ListTile(
+                                  leading: const Icon(Icons.sort_rounded),
+                                  title: const Text('歌词来源排序'),
+                                  subtitle: Text(live.lyricSourceOrderLabel),
+                                  trailing: const Icon(
+                                    Icons.chevron_right_rounded,
+                                  ),
+                                  onTap: () => _lyricSourceOrderSheet(context),
+                                ),
+                                const Divider(height: 1, indent: 56),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.swap_vert_circle_rounded,
+                                  ),
+                                  title: const Text('换行弹簧'),
+                                  subtitle: Text(
+                                    '${live.lyricScrollPreset.label} · 响应 ${live.lyricScrollStiffness.round()} · 阻尼 ${live.lyricScrollDamping.round()}',
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.chevron_right_rounded,
+                                  ),
+                                  onTap: () => _lyricScrollMotionSheet(context),
+                                ),
+                                const Divider(height: 1, indent: 56),
+                                ListTile(
+                                  leading: const Icon(Icons.speed_rounded),
+                                  title: const Text('歌词动画帧率'),
+                                  subtitle: Text(
+                                    '${live.lyricFrameRate} FPS · 默认 30 FPS',
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.chevron_right_rounded,
+                                  ),
+                                  onTap: () => _lyricFrameRateSheet(context),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Icon(Icons.timelapse_rounded),
+                              const SizedBox(width: 10),
+                              const Text('全局歌词延迟'),
+                              const Spacer(),
+                              Text(
+                                '${live.lyricDelayMs >= 0 ? '+' : ''}${live.lyricDelayMs} ms',
+                                style: TextStyle(color: scheme.primary),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            value: live.lyricDelayMs.toDouble(),
+                            min: -5000,
+                            max: 5000,
+                            divisions: 40,
+                            label: '${live.lyricDelayMs} ms',
+                            onChanged: (value) =>
+                                live.setLyricDelay(value.round()),
+                          ),
+                          Text(
+                            '正数让歌词稍后出现，设置会对所有歌曲保存。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: live.searchLyrics,
-                  decoration: InputDecoration(
-                    hintText: '模糊搜索歌曲、歌手或专辑',
-                    prefixIcon: const Icon(Icons.manage_search_rounded),
-                    suffixIcon: IconButton.filledTonal(
-                      onPressed: () => live.searchLyrics(controller.text),
-                      icon: const Icon(Icons.search_rounded),
-                    ),
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(28),
-                      borderSide: BorderSide.none,
+              ),
+              if (live.searchingLyrics)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: MorphingLoadingIndicator()),
+                )
+              else if (live.lyricChoices.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Text(
+                      live.hasCachedCurrentLyrics
+                          ? '没有找到可替换的歌词，当前缓存歌词仍可使用\n试试修改关键词重新搜索'
+                          : '没有找到可用歌词，试试修改关键词重新搜索',
+                      textAlign: TextAlign.center,
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Icon(Icons.timelapse_rounded),
-                    const SizedBox(width: 10),
-                    const Text('全局歌词延迟'),
-                    const Spacer(),
-                    Text(
-                      '${live.lyricDelayMs >= 0 ? '+' : ''}${live.lyricDelayMs} ms',
-                      style: TextStyle(color: scheme.primary),
-                    ),
-                  ],
-                ),
-                Slider(
-                  value: live.lyricDelayMs.toDouble(),
-                  min: -5000,
-                  max: 5000,
-                  divisions: 40,
-                  label: '${live.lyricDelayMs} ms',
-                  onChanged: (value) => live.setLyricDelay(value.round()),
-                ),
-                Text(
-                  '正数让歌词稍后出现，设置会对所有歌曲保存。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: live.searchingLyrics
-                      ? const Center(child: MorphingLoadingIndicator())
-                      : live.lyricChoices.isEmpty
-                      ? Center(
-                          child: Text(
-                            live.hasCachedCurrentLyrics
-                                ? '当前歌词已从本地缓存恢复\n需要更换时点击上方搜索按钮'
-                                : '没有找到可用歌词',
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      : ListView.separated(
-                          itemCount: live.lyricChoices.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final choice = live.lyricChoices[index];
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                              ),
-                              leading: Cover(
-                                track: choice.track,
-                                size: 52,
-                                radius: 16,
-                              ),
-                              title: Text(choice.track.title),
-                              subtitle: Text(
-                                '${choice.source} · ${choice.track.artist}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: Chip(
-                                avatar: Icon(
-                                  choice.isWordSynced
-                                      ? Icons.graphic_eq_rounded
-                                      : Icons.subject_rounded,
-                                  size: 18,
-                                ),
-                                label: Text(choice.isWordSynced ? '逐字' : '普通'),
-                              ),
-                              onTap: () {
-                                live.selectLyrics(choice);
-                                Navigator.pop(context);
-                              },
-                            );
-                          },
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList.separated(
+                    itemCount: live.lyricChoices.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final choice = live.lyricChoices[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        leading: Cover(
+                          track: choice.track,
+                          size: 52,
+                          radius: 16,
                         ),
+                        title: Text(choice.track.title),
+                        subtitle: Text(
+                          '${choice.source} · ${choice.track.artist}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Chip(
+                          avatar: Icon(
+                            choice.isWordSynced
+                                ? Icons.graphic_eq_rounded
+                                : Icons.subject_rounded,
+                            size: 18,
+                          ),
+                          label: Text(choice.isWordSynced ? '逐字' : '普通'),
+                        ),
+                        onTap: () {
+                          live.selectLyrics(choice);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ],
-            ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: MediaQuery.paddingOf(context).bottom + 12,
+                ),
+              ),
+            ],
           ),
         ),
       );
