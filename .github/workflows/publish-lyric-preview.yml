@@ -1,0 +1,67 @@
+name: Publish lyric picker preview release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/publish-lyric-picker-preview
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-lyric-picker-preview
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download verified preview build
+        run: |
+          set -euo pipefail
+          gh run view 38035880607 --json conclusion,headSha > run.json
+          jq -e '.conclusion == "success" and .headSha == "8d030fa8fbd022f3bdfe6cedefea1b58d8fed383"' run.json
+          gh run download 38035880607 --name sonorynth-preview-arm64-v8a --dir arm64
+          gh run download 38035880607 --name sonorynth-preview-armeabi-v7a --dir arm
+          (cd arm64 && sha256sum --check SHA256SUMS.txt)
+          (cd arm && sha256sum --check SHA256SUMS.txt)
+          cat arm64/SHA256SUMS.txt arm/SHA256SUMS.txt > SHA256SUMS.txt
+
+      - name: Publish preview release
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          ## 歌词选择修复测试版
+          
+          - 歌词选择弹窗可以随上滑展开，候选列表与上方内容一起滚动。
+          - 显示、动画和延迟设置默认折叠，为候选歌词留出更多空间。
+          - 有歌词缓存时也默认搜索并显示候选歌词，方便随时更换；保留缓存播放。
+          - 改善小屏幕和键盘弹出时的滚动与布局。
+          
+          ## 下载与安装
+          
+          - 多数 Android 手机下载 **sonorynth-preview-arm64-v8a.apk**。
+          - 旧款 32 位 ARM 手机下载 **sonorynth-preview-armeabi-v7a.apk**。
+          - 此为测试签名、独立包名 `app.sonorynth.player.preview`，可与正式版共存。
+          - 不同测试构建可能使用不同证书；若提示签名冲突，只需卸载旧预览版再安装，旧预览版数据会被清除。
+          
+          静态分析与全部 73 项测试通过，GitHub Actions APK 构建成功；尚未进行 Android 真机验证。
+          
+          源码提交：8d030fa8fbd022f3bdfe6cedefea1b58d8fed383
+          构建记录：https://github.com/CLCTY/Sonorynth/actions/runs/38035880607
+          修复 PR：https://github.com/CLCTY/Sonorynth/pull/1
+          EOF
+          gh release create v1.10.12-preview.20261010 \
+            --target 8d030fa8fbd022f3bdfe6cedefea1b58d8fed383 \
+            --title "Sonorynth 歌词选择修复测试版 · 2026-10-10" \
+            --prerelease \
+            --notes-file release-notes.md \
+            arm64/sonorynth-preview-arm64-v8a.apk \
+            arm/sonorynth-preview-armeabi-v7a.apk \
+            SHA256SUMS.txt
