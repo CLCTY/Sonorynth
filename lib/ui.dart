@@ -1992,13 +1992,33 @@ class _LyricLineSpringShiftState extends State<_LyricLineSpringShift>
   );
 }
 
-class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
+class _TabletLyricsPaneState extends State<_TabletLyricsPane>
+    with SingleTickerProviderStateMixin {
   final ScrollController controller = ScrollController();
+  final ValueNotifier<Duration> luminousClock = ValueNotifier(Duration.zero);
+  late final Ticker luminousTicker;
+  MelodyState? stageState;
+  Duration nextStageFrame = Duration.zero;
   final ValueNotifier<_LyricLineMotion> lineMotion = ValueNotifier(
     const _LyricLineMotion.idle(),
   );
   int motionSerial = 0;
   int previous = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    luminousTicker = createTicker((elapsed) {
+      final state = stageState;
+      if (state == null || !state.playing || !state.luminousLyrics) return;
+      if (elapsed < nextStageFrame) return;
+      nextStageFrame =
+          elapsed +
+          Duration(microseconds: (1000000 / state.lyricFrameRate).round());
+      luminousClock.value =
+          state.player.position - Duration(milliseconds: state.lyricDelayMs);
+    })..start();
+  }
 
   void moveLinesTo(double target, MelodyState state, int activeIndex) {
     final position = controller.position;
@@ -2021,6 +2041,8 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
 
   @override
   void dispose() {
+    luminousTicker.dispose();
+    luminousClock.dispose();
     lineMotion.dispose();
     controller.dispose();
     super.dispose();
@@ -2029,6 +2051,8 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
   @override
   Widget build(BuildContext context) {
     final state = MelodyScope.of(context);
+    stageState = state;
+    luminousTicker.muted = !state.playing || !state.luminousLyrics;
     final scheme = Theme.of(context).colorScheme;
     final isDark = scheme.brightness == Brightness.dark;
     final lyricInk = _albumLyricInk(state.coverPalette, isDark);
@@ -2039,6 +2063,7 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
         final lyricPosition =
             timeline.position - Duration(milliseconds: state.lyricDelayMs);
         final active = LyricsParser.activeLine(state.lyrics, lyricPosition);
+        luminousClock.value = lyricPosition;
         if (active >= 0 && active != previous && controller.hasClients) {
           previous = active;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2112,6 +2137,25 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
                         )
                       : state.lyrics.isEmpty
                       ? const Center(child: Text('暂未找到歌词'))
+                      : state.luminousLyrics
+                      ? LuminousLyrics(
+                          lines: state.lyrics,
+                          position: luminousClock,
+                          playing: state.playing,
+                          ink: lyricInk,
+                          accent: albumLyricRoleColor(
+                            state.coverPalette,
+                            isDark,
+                            0,
+                          ),
+                          showTranslation: state.showTranslation,
+                          karaoke: state.karaokeLyrics,
+                          gyroscope: state.lyricGyroscope,
+                          onSeek: (position) => state.seek(
+                            position +
+                                Duration(milliseconds: state.lyricDelayMs),
+                          ),
+                        )
                       : ListView.builder(
                           controller: controller,
                           padding: const EdgeInsets.symmetric(vertical: 120),
@@ -2436,7 +2480,12 @@ class _LyricsScreenState extends State<LyricsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    melodyState = MelodyScope.of(context);
+    final nextState = MelodyScope.of(context);
+    if (melodyState != nextState) {
+      melodyState?.playbackTimeline.removeListener(syncLyricTimeline);
+      melodyState = nextState;
+      nextState.playbackTimeline.addListener(syncLyricTimeline);
+    }
     final state = melodyState!;
     final position =
         state.player.position - Duration(milliseconds: state.lyricDelayMs);
@@ -2445,10 +2494,27 @@ class _LyricsScreenState extends State<LyricsScreen>
     liveTrackId = state.current.id;
   }
 
+  void syncLyricTimeline() {
+    final state = melodyState;
+    if (!mounted || state == null) return;
+    final position =
+        state.playbackTimeline.value.position -
+        Duration(milliseconds: state.lyricDelayMs);
+    lyricClock.value = position;
+    final nextActive = LyricsParser.activeLine(state.lyrics, position);
+    if (nextActive != liveActive || liveTrackId != state.current.id) {
+      setState(() {
+        liveActive = nextActive;
+        liveTrackId = state.current.id;
+      });
+    }
+  }
+
   @override
   void dispose() {
     resumeTimer?.cancel();
     lyricTicker.dispose();
+    melodyState?.playbackTimeline.removeListener(syncLyricTimeline);
     lineMotion.dispose();
     lyricClock.dispose();
     controller.dispose();
