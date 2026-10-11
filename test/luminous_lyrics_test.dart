@@ -161,6 +161,9 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
+      final initialStageSize = tester.getSize(
+        find.byKey(const ValueKey('luminous-stage')),
+      );
       await tester.ensureVisible(find.text('Next line'));
       await tester.tap(find.text('Next line'));
       expect(sought, const Duration(seconds: 3));
@@ -180,6 +183,10 @@ void main() {
       expect(entering.opacity.value, lessThan(1));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('luminous-stage')), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('luminous-stage'))),
+        initialStageSize,
+      );
       var painter =
           tester
                   .widget<CustomPaint>(

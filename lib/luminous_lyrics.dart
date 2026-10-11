@@ -154,13 +154,8 @@ class _LuminousLyricsState extends State<LuminousLyrics>
                       ),
                     ),
                   ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: math.max(
-                        0,
-                        (constraints.maxHeight - 32) * .32,
-                      ),
-                    ),
+                  SizedBox(
+                    height: math.max(0, (constraints.maxHeight - 32) * .32),
                     child: SingleChildScrollView(
                       child: AnimatedSwitcher(
                         duration: motionAllowed
