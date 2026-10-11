@@ -124,6 +124,8 @@ class MelodyState extends ChangeNotifier {
   final ValueNotifier<int> themeRevision = ValueNotifier(0);
   int lyricDelayMs = 0;
   int lyricFrameRate = 30;
+  bool luminousLyrics = false;
+  bool lyricGyroscope = true;
   LyricScrollPreset lyricScrollPreset = LyricScrollPreset.balanced;
   double lyricScrollMass = LyricScrollPreset.balanced.mass;
   double lyricScrollStiffness = LyricScrollPreset.balanced.stiffness;
@@ -243,6 +245,8 @@ class MelodyState extends ChangeNotifier {
     privateMode = _prefs?.getBool('privateMode') ?? false;
     lyricDelayMs = _prefs?.getInt('lyricDelayMs') ?? 0;
     lyricFrameRate = (_prefs?.getInt('lyricFrameRate') ?? 30).clamp(15, 60);
+    luminousLyrics = _prefs?.getBool('luminousLyrics') ?? false;
+    lyricGyroscope = _prefs?.getBool('lyricGyroscope') ?? true;
     lyricScrollPreset =
         LyricScrollPreset.values[(_prefs?.getInt('lyricScrollPreset') ??
                 LyricScrollPreset.balanced.index)
@@ -1386,6 +1390,10 @@ class MelodyState extends ChangeNotifier {
         showTranslation = value;
       case 'karaokeLyrics':
         karaokeLyrics = value;
+      case 'luminousLyrics':
+        luminousLyrics = value;
+      case 'lyricGyroscope':
+        lyricGyroscope = value;
       case 'privateMode':
         privateMode = value;
     }

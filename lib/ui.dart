@@ -14,6 +14,7 @@ import 'lyrics_parser.dart';
 import 'm3e_beat_stage.dart';
 import 'models.dart';
 import 'lyric_colors.dart';
+import 'luminous_lyrics.dart';
 import 'experience_preferences.dart';
 import 'onboarding.dart';
 
@@ -2619,9 +2620,19 @@ class _LyricsScreenState extends State<LyricsScreen>
           ],
         ),
         centerTitle: true,
-        // Balance the leading back button without adding a visible action, so
-        // long song titles remain centered against the whole screen.
-        actions: const [SizedBox(width: 56)],
+        // Keep the style selector opposite the back button.
+        actions: [
+          PopupMenuButton<bool>(
+            tooltip: '歌词样式',
+            icon: const Icon(Icons.auto_awesome_rounded),
+            initialValue: state.luminousLyrics,
+            onSelected: (value) => state.setSetting('luminousLyrics', value),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: false, child: Text('滚动歌词')),
+              PopupMenuItem(value: true, child: Text('流光')),
+            ],
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -2645,8 +2656,8 @@ class _LyricsScreenState extends State<LyricsScreen>
               ),
             ),
           Positioned(
-            left: 0,
-            right: 0,
+            left: MediaQuery.paddingOf(context).left,
+            right: MediaQuery.paddingOf(context).right,
             top: lyricsViewportTop,
             bottom: 88 + MediaQuery.paddingOf(context).bottom,
             child: ClipRect(
@@ -2676,6 +2687,24 @@ class _LyricsScreenState extends State<LyricsScreen>
                     ? InstrumentalLyricStage(playing: state.playing)
                     : state.lyrics.isEmpty
                     ? const Center(child: Text('暂未找到歌词，可从右下角选择其他匹配'))
+                    : state.luminousLyrics
+                    ? LuminousLyrics(
+                        lines: state.lyrics,
+                        position: lyricClock,
+                        playing: state.playing,
+                        ink: lyricInk,
+                        accent: albumLyricRoleColor(
+                          state.coverPalette,
+                          isDark,
+                          0,
+                        ),
+                        showTranslation: state.showTranslation,
+                        karaoke: state.karaokeLyrics,
+                        gyroscope: state.lyricGyroscope,
+                        onSeek: (position) => state.seek(
+                          position + Duration(milliseconds: state.lyricDelayMs),
+                        ),
+                      )
                     : ListView.builder(
                         controller: controller,
                         // Keeping five screens of animated lyric rows alive was
@@ -3709,6 +3738,20 @@ class SettingsScreen extends StatelessWidget {
           ],
           if (section == SettingsSection.lyrics)
             SettingsGroup('歌词显示', [
+              SettingsSwitch(
+                icon: Icons.auto_awesome_rounded,
+                title: '流光歌词',
+                subtitle: '错落词块、逐词光晕与轻微漂浮',
+                value: state.luminousLyrics,
+                onChanged: (v) => state.setSetting('luminousLyrics', v),
+              ),
+              SettingsSwitch(
+                icon: Icons.screen_rotation_rounded,
+                title: '流光陀螺仪视差',
+                subtitle: '轻微跟随手机转动，仅在流光播放时启用',
+                value: state.lyricGyroscope,
+                onChanged: (v) => state.setSetting('lyricGyroscope', v),
+              ),
               SettingsSwitch(
                 icon: Icons.auto_awesome_rounded,
                 title: '逐字歌词',
