@@ -114,6 +114,9 @@ class _LuminousLyricsState extends State<LuminousLyrics>
                             karaoke: widget.karaoke,
                             motion: motionAllowed,
                             direction: Directionality.of(context),
+                            fontFamily: Theme.of(
+                              context,
+                            ).textTheme.bodyLarge?.fontFamily,
                           ),
                         ),
                       ),
@@ -206,14 +209,16 @@ class LuminousLayout {
     double font,
     TextScaler scaler,
     TextDirection direction,
-    Color color,
-  ) => TextPainter(
+    Color color, [
+    String? fontFamily,
+  ]) => TextPainter(
     text: TextSpan(
       text: text,
       style: TextStyle(
         fontSize: font,
         fontWeight: FontWeight.w700,
         color: color,
+        fontFamily: fontFamily,
         height: 1.2,
       ),
     ),
@@ -225,8 +230,9 @@ class LuminousLayout {
     List<LyricWord> words,
     Size size,
     TextScaler scaler,
-    TextDirection direction,
-  ) {
+    TextDirection direction, [
+    String? fontFamily,
+  ]) {
     final width = math.max(1.0, size.width - motionInset * 2);
     final height = math.max(1.0, size.height - motionInset * 2);
     var font = math.min(48.0, math.max(28.0, size.width * .085));
@@ -245,6 +251,7 @@ class LuminousLayout {
           scaler,
           direction,
           Colors.white,
+          fontFamily,
         );
         final original = painter.size;
         painter.dispose();
@@ -306,6 +313,7 @@ class LuminousPainter extends CustomPainter {
     required this.karaoke,
     required this.motion,
     required this.direction,
+    this.fontFamily,
   });
   final LyricLine? line;
   final Duration position;
@@ -314,6 +322,7 @@ class LuminousPainter extends CustomPainter {
   final TextScaler textScaler;
   final bool karaoke, motion;
   final TextDirection direction;
+  final String? fontFamily;
   LuminousLayout? _layout;
   Size? _size;
 
@@ -335,7 +344,13 @@ class LuminousPainter extends CustomPainter {
     if (size.width < 60 || size.height < 60) return;
     final layout = _size == size && _layout != null
         ? _layout!
-        : LuminousLayout.calculate(words, size, textScaler, direction);
+        : LuminousLayout.calculate(
+            words,
+            size,
+            textScaler,
+            direction,
+            fontFamily,
+          );
     _size = size;
     _layout = layout;
     final seconds = position.inMicroseconds / 1000000;
@@ -382,6 +397,7 @@ class LuminousPainter extends CustomPainter {
                   : .48) *
               (.5 + arrival * .5),
         ),
+        fontFamily,
       );
       final origin = Offset(-painter.width / 2, -painter.height / 2);
       painter.paint(canvas, origin);
@@ -391,6 +407,7 @@ class LuminousPainter extends CustomPainter {
             text: word.text,
             style: TextStyle(
               fontSize: layout.fontSize,
+              fontFamily: fontFamily,
               fontWeight: FontWeight.w700,
               height: 1.2,
               color: accent,
@@ -425,14 +442,16 @@ class LuminousPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant LuminousPainter oldDelegate) {
-    if (oldDelegate.line == line &&
+    if (oldDelegate.fontFamily == fontFamily &&
+        oldDelegate.line == line &&
         oldDelegate.karaoke == karaoke &&
         oldDelegate.textScaler == textScaler &&
         oldDelegate.direction == direction) {
       _layout = oldDelegate._layout;
       _size = oldDelegate._size;
     }
-    return oldDelegate.position != position ||
+    return oldDelegate.fontFamily != fontFamily ||
+        oldDelegate.position != position ||
         oldDelegate.tilt != tilt ||
         oldDelegate.line != line ||
         oldDelegate.ink != ink ||
