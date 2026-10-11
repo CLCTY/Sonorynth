@@ -14,6 +14,7 @@ import 'lyrics_parser.dart';
 import 'm3e_beat_stage.dart';
 import 'models.dart';
 import 'lyric_colors.dart';
+import 'luminous_lyrics.dart';
 import 'experience_preferences.dart';
 import 'onboarding.dart';
 
@@ -1991,13 +1992,33 @@ class _LyricLineSpringShiftState extends State<_LyricLineSpringShift>
   );
 }
 
-class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
+class _TabletLyricsPaneState extends State<_TabletLyricsPane>
+    with SingleTickerProviderStateMixin {
   final ScrollController controller = ScrollController();
+  final ValueNotifier<Duration> luminousClock = ValueNotifier(Duration.zero);
+  late final Ticker luminousTicker;
+  MelodyState? stageState;
+  Duration nextStageFrame = Duration.zero;
   final ValueNotifier<_LyricLineMotion> lineMotion = ValueNotifier(
     const _LyricLineMotion.idle(),
   );
   int motionSerial = 0;
   int previous = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    luminousTicker = createTicker((elapsed) {
+      final state = stageState;
+      if (state == null || !state.playing || !state.luminousLyrics) return;
+      if (elapsed < nextStageFrame) return;
+      nextStageFrame =
+          elapsed +
+          Duration(microseconds: (1000000 / state.lyricFrameRate).round());
+      luminousClock.value =
+          state.player.position - Duration(milliseconds: state.lyricDelayMs);
+    })..start();
+  }
 
   void moveLinesTo(double target, MelodyState state, int activeIndex) {
     final position = controller.position;
@@ -2020,6 +2041,8 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
 
   @override
   void dispose() {
+    luminousTicker.dispose();
+    luminousClock.dispose();
     lineMotion.dispose();
     controller.dispose();
     super.dispose();
@@ -2028,6 +2051,8 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
   @override
   Widget build(BuildContext context) {
     final state = MelodyScope.of(context);
+    stageState = state;
+    luminousTicker.muted = !state.playing || !state.luminousLyrics;
     final scheme = Theme.of(context).colorScheme;
     final isDark = scheme.brightness == Brightness.dark;
     final lyricInk = _albumLyricInk(state.coverPalette, isDark);
@@ -2038,6 +2063,7 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
         final lyricPosition =
             timeline.position - Duration(milliseconds: state.lyricDelayMs);
         final active = LyricsParser.activeLine(state.lyrics, lyricPosition);
+        luminousClock.value = lyricPosition;
         if (active >= 0 && active != previous && controller.hasClients) {
           previous = active;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2111,6 +2137,25 @@ class _TabletLyricsPaneState extends State<_TabletLyricsPane> {
                         )
                       : state.lyrics.isEmpty
                       ? const Center(child: Text('暂未找到歌词'))
+                      : state.luminousLyrics
+                      ? LuminousLyrics(
+                          lines: state.lyrics,
+                          position: luminousClock,
+                          playing: state.playing,
+                          ink: lyricInk,
+                          accent: albumLyricRoleColor(
+                            state.coverPalette,
+                            isDark,
+                            0,
+                          ),
+                          showTranslation: state.showTranslation,
+                          karaoke: state.karaokeLyrics,
+                          gyroscope: state.lyricGyroscope,
+                          onSeek: (position) => state.seek(
+                            position +
+                                Duration(milliseconds: state.lyricDelayMs),
+                          ),
+                        )
                       : ListView.builder(
                           controller: controller,
                           padding: const EdgeInsets.symmetric(vertical: 120),
@@ -2435,7 +2480,12 @@ class _LyricsScreenState extends State<LyricsScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    melodyState = MelodyScope.of(context);
+    final nextState = MelodyScope.of(context);
+    if (melodyState != nextState) {
+      melodyState?.playbackTimeline.removeListener(syncLyricTimeline);
+      melodyState = nextState;
+      nextState.playbackTimeline.addListener(syncLyricTimeline);
+    }
     final state = melodyState!;
     final position =
         state.player.position - Duration(milliseconds: state.lyricDelayMs);
@@ -2444,10 +2494,27 @@ class _LyricsScreenState extends State<LyricsScreen>
     liveTrackId = state.current.id;
   }
 
+  void syncLyricTimeline() {
+    final state = melodyState;
+    if (!mounted || state == null) return;
+    final position =
+        state.playbackTimeline.value.position -
+        Duration(milliseconds: state.lyricDelayMs);
+    lyricClock.value = position;
+    final nextActive = LyricsParser.activeLine(state.lyrics, position);
+    if (nextActive != liveActive || liveTrackId != state.current.id) {
+      setState(() {
+        liveActive = nextActive;
+        liveTrackId = state.current.id;
+      });
+    }
+  }
+
   @override
   void dispose() {
     resumeTimer?.cancel();
     lyricTicker.dispose();
+    melodyState?.playbackTimeline.removeListener(syncLyricTimeline);
     lineMotion.dispose();
     lyricClock.dispose();
     controller.dispose();
@@ -2619,9 +2686,19 @@ class _LyricsScreenState extends State<LyricsScreen>
           ],
         ),
         centerTitle: true,
-        // Balance the leading back button without adding a visible action, so
-        // long song titles remain centered against the whole screen.
-        actions: const [SizedBox(width: 56)],
+        // Keep the style selector opposite the back button.
+        actions: [
+          PopupMenuButton<bool>(
+            tooltip: '歌词样式',
+            icon: const Icon(Icons.auto_awesome_rounded),
+            initialValue: state.luminousLyrics,
+            onSelected: (value) => state.setSetting('luminousLyrics', value),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: false, child: Text('滚动歌词')),
+              PopupMenuItem(value: true, child: Text('流光')),
+            ],
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -2645,8 +2722,8 @@ class _LyricsScreenState extends State<LyricsScreen>
               ),
             ),
           Positioned(
-            left: 0,
-            right: 0,
+            left: MediaQuery.paddingOf(context).left,
+            right: MediaQuery.paddingOf(context).right,
             top: lyricsViewportTop,
             bottom: 88 + MediaQuery.paddingOf(context).bottom,
             child: ClipRect(
@@ -2676,6 +2753,24 @@ class _LyricsScreenState extends State<LyricsScreen>
                     ? InstrumentalLyricStage(playing: state.playing)
                     : state.lyrics.isEmpty
                     ? const Center(child: Text('暂未找到歌词，可从右下角选择其他匹配'))
+                    : state.luminousLyrics
+                    ? LuminousLyrics(
+                        lines: state.lyrics,
+                        position: lyricClock,
+                        playing: state.playing,
+                        ink: lyricInk,
+                        accent: albumLyricRoleColor(
+                          state.coverPalette,
+                          isDark,
+                          0,
+                        ),
+                        showTranslation: state.showTranslation,
+                        karaoke: state.karaokeLyrics,
+                        gyroscope: state.lyricGyroscope,
+                        onSeek: (position) => state.seek(
+                          position + Duration(milliseconds: state.lyricDelayMs),
+                        ),
+                      )
                     : ListView.builder(
                         controller: controller,
                         // Keeping five screens of animated lyric rows alive was
@@ -3709,6 +3804,20 @@ class SettingsScreen extends StatelessWidget {
           ],
           if (section == SettingsSection.lyrics)
             SettingsGroup('歌词显示', [
+              SettingsSwitch(
+                icon: Icons.auto_awesome_rounded,
+                title: '流光歌词',
+                subtitle: '错落词块、逐词光晕与轻微漂浮',
+                value: state.luminousLyrics,
+                onChanged: (v) => state.setSetting('luminousLyrics', v),
+              ),
+              SettingsSwitch(
+                icon: Icons.screen_rotation_rounded,
+                title: '流光陀螺仪视差',
+                subtitle: '轻微跟随手机转动，仅在流光播放时启用',
+                value: state.lyricGyroscope,
+                onChanged: (v) => state.setSetting('lyricGyroscope', v),
+              ),
               SettingsSwitch(
                 icon: Icons.auto_awesome_rounded,
                 title: '逐字歌词',
@@ -6642,12 +6751,8 @@ Future<void> showLyricPickerSheet(BuildContext context) async {
   final controller = TextEditingController(
     text: '${state.current.title} ${state.current.artist}'.trim(),
   );
-  // Cached playback lyrics should not hide the alternatives for this song.
-  if (!state.searchingLyrics &&
-      (state.lyricChoices.isEmpty ||
-          state.lyricChoicesTrackId != state.current.id)) {
-    unawaited(state.searchLyrics(controller.text));
-  }
+  // Candidates are prepared when the current track is restored or changed.
+  // Opening this sheet only displays the ready results; manual search retries.
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

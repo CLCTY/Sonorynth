@@ -78,6 +78,7 @@ Future<void> openPicker(
   PickerTestState state,
   Size size,
 ) async {
+  await state.searchLyrics('${state.current.title} ${state.current.artist}');
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
