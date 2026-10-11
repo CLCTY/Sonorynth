@@ -101,22 +101,57 @@ class _LuminousLyricsState extends State<LuminousLyrics>
                           : line?.text ?? '等待演唱',
                       child: ValueListenableBuilder<Offset>(
                         valueListenable: gyro,
-                        builder: (context, tilt, _) => CustomPaint(
-                          key: const ValueKey('luminous-stage'),
-                          size: Size.infinite,
-                          painter: LuminousPainter(
-                            line: line,
-                            position: position,
-                            tilt: tilt,
-                            ink: widget.ink,
-                            accent: widget.accent,
-                            textScaler: MediaQuery.textScalerOf(context),
-                            karaoke: widget.karaoke,
-                            motion: motionAllowed,
-                            direction: Directionality.of(context),
-                            fontFamily: Theme.of(
-                              context,
-                            ).textTheme.bodyLarge?.fontFamily,
+                        builder: (context, tilt, _) => AnimatedSwitcher(
+                          duration: motionAllowed
+                              ? const Duration(milliseconds: 260)
+                              : Duration.zero,
+                          reverseDuration: motionAllowed
+                              ? const Duration(milliseconds: 200)
+                              : Duration.zero,
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          layoutBuilder: (current, previous) => Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              ...previous,
+                              if (current != null) current,
+                            ],
+                          ),
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
+                                opacity: animation,
+                                child: AnimatedBuilder(
+                                  animation: animation,
+                                  child: child,
+                                  builder: (_, child) => Transform.translate(
+                                    offset: Offset(
+                                      0,
+                                      (1 - animation.value) * 6,
+                                    ),
+                                    child: child,
+                                  ),
+                                ),
+                              ),
+                          child: KeyedSubtree(
+                            key: ObjectKey(line),
+                            child: CustomPaint(
+                              key: const ValueKey('luminous-stage'),
+                              size: Size.infinite,
+                              painter: LuminousPainter(
+                                line: line,
+                                position: position,
+                                tilt: tilt,
+                                ink: widget.ink,
+                                accent: widget.accent,
+                                textScaler: MediaQuery.textScalerOf(context),
+                                karaoke: widget.karaoke,
+                                motion: motionAllowed,
+                                direction: Directionality.of(context),
+                                fontFamily: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.fontFamily,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -130,52 +165,58 @@ class _LuminousLyricsState extends State<LuminousLyrics>
                       ),
                     ),
                     child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          if (!short &&
-                              line?.backgroundText?.isNotEmpty == true)
-                            Text(
-                              line!.backgroundText!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: widget.accent,
-                                fontSize: 16,
-                              ),
-                            ),
-                          if (widget.showTranslation &&
-                              line?.translation?.isNotEmpty == true)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                line!.translation!,
-                                maxLines: short ? 1 : 3,
+                      child: AnimatedSwitcher(
+                        duration: motionAllowed
+                            ? const Duration(milliseconds: 220)
+                            : Duration.zero,
+                        child: Column(
+                          key: ObjectKey(line),
+                          children: [
+                            if (!short &&
+                                line?.backgroundText?.isNotEmpty == true)
+                              Text(
+                                line!.backgroundText!,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: widget.ink.withValues(alpha: .8),
+                                  color: widget.accent,
                                   fontSize: 16,
                                 ),
                               ),
-                            ),
-                          if (next != null)
-                            TextButton(
-                              onPressed: widget.onSeek == null
-                                  ? null
-                                  : () => widget.onSeek!(next.start),
-                              child: Text(
-                                next.isInterlude ? '间奏 ···' : next.text,
-                                maxLines: short ? 1 : 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: widget.ink.withValues(alpha: .55),
-                                  fontSize: 14,
+                            if (widget.showTranslation &&
+                                line?.translation?.isNotEmpty == true)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  line!.translation!,
+                                  maxLines: short ? 1 : 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: widget.ink.withValues(alpha: .8),
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                            if (next != null)
+                              TextButton(
+                                onPressed: widget.onSeek == null
+                                    ? null
+                                    : () => widget.onSeek!(next.start),
+                                child: Text(
+                                  next.isInterlude ? '间奏 ···' : next.text,
+                                  maxLines: short ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: widget.ink.withValues(alpha: .55),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

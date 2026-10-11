@@ -6751,12 +6751,8 @@ Future<void> showLyricPickerSheet(BuildContext context) async {
   final controller = TextEditingController(
     text: '${state.current.title} ${state.current.artist}'.trim(),
   );
-  // Cached playback lyrics should not hide the alternatives for this song.
-  if (!state.searchingLyrics &&
-      (state.lyricChoices.isEmpty ||
-          state.lyricChoicesTrackId != state.current.id)) {
-    unawaited(state.searchLyrics(controller.text));
-  }
+  // Candidates are prepared when the current track is restored or changed.
+  // Opening this sheet only displays the ready results; manual search retries.
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

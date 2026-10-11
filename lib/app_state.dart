@@ -84,6 +84,8 @@ class MelodyState extends ChangeNotifier {
   bool _checkpointPersistenceRequested = false;
   Duration _uncommittedListeningTime = Duration.zero;
   int _playRequestSerial = 0;
+  int _lyricSearchSerial = 0;
+  final Map<String, List<LyricChoice>> _lyricChoiceCache = {};
   bool _advancingAfterCompletion = false;
   bool _switchingShortSource = false;
   Uri? _activeSourceUri;
@@ -281,6 +283,7 @@ class MelodyState extends ChangeNotifier {
     if (hasCurrent) {
       unawaited(_extractCoverColor(current));
       unawaited(loadLyrics(current));
+      unawaited(prepareLyricChoices(current));
     }
     _saveTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       // Playback only changes the current position and listening time. Avoid
@@ -542,6 +545,7 @@ class MelodyState extends ChangeNotifier {
     instrumentalLyrics = false;
     lyricChoices = [];
     lyricChoicesTrackId = '';
+    _lyricSearchSerial++;
     position = startAt;
     duration = track.duration;
     _syncPlaybackTimeline();
@@ -554,6 +558,7 @@ class MelodyState extends ChangeNotifier {
     notifyListeners();
     unawaited(_extractCoverColor(track));
     unawaited(loadLyrics(track));
+    unawaited(prepareLyricChoices(track));
     Object? lastError;
     for (var attempt = 0; attempt < 6; attempt++) {
       try {
@@ -889,18 +894,61 @@ class MelodyState extends ChangeNotifier {
   Future<void> searchLyrics(String keyword) async {
     final query = keyword.trim();
     if (query.isEmpty) return;
+    await _searchLyricChoices(query, current, automatic: false);
+  }
+
+  Future<void> prepareLyricChoices([Track? source]) async {
+    final target = source ?? current;
+    if (target.id.isEmpty || target.id != current.id) return;
+    final cached = _lyricChoiceCache[target.id];
+    if (cached != null) {
+      lyricChoices = List.of(cached);
+      lyricChoicesTrackId = target.id;
+      searchingLyrics = false;
+      _sortLyricChoices();
+      notifyListeners();
+      return;
+    }
+    if (searchingLyrics && lyricChoicesTrackId == target.id) return;
+    await _searchLyricChoices(
+      '${target.title} ${target.artist}'.trim(),
+      target,
+      automatic: true,
+    );
+  }
+
+  Future<void> _searchLyricChoices(
+    String query,
+    Track target, {
+    required bool automatic,
+  }) async {
+    final request = ++_lyricSearchSerial;
     searchingLyrics = true;
     lyricChoices = [];
-    lyricChoicesTrackId = current.id;
+    lyricChoicesTrackId = target.id;
     notifyListeners();
     try {
-      lyricChoices = await api.searchLyrics(query, preferredTrack: current);
+      final choices = await api.searchLyrics(query, preferredTrack: target);
+      if (automatic || query == '${target.title} ${target.artist}'.trim()) {
+        _lyricChoiceCache.remove(target.id);
+        _lyricChoiceCache[target.id] = List.of(choices);
+        if (_lyricChoiceCache.length > 8)
+          _lyricChoiceCache.remove(_lyricChoiceCache.keys.first);
+      }
+      if (request != _lyricSearchSerial || current.id != target.id) return;
+      lyricChoices = choices;
       _sortLyricChoices();
     } catch (error) {
-      message = '歌词搜索失败：$error';
+      if (!automatic &&
+          request == _lyricSearchSerial &&
+          current.id == target.id) {
+        message = '歌词搜索失败：$error';
+      }
     } finally {
-      searchingLyrics = false;
-      notifyListeners();
+      if (request == _lyricSearchSerial && current.id == target.id) {
+        searchingLyrics = false;
+        notifyListeners();
+      }
     }
   }
 

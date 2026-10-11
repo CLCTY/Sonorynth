@@ -52,7 +52,7 @@ void main() {
     await tester.pump();
     expect(calls.last, 'cancel');
     await tester.pumpWidget(const SizedBox());
-      debugDefaultTargetPlatformOverride = null;
+    debugDefaultTargetPlatformOverride = null;
   });
   test('gyro is bounded, ignores invalid data and returns to center', () {
     final tilt = LyricTilt();
@@ -100,7 +100,7 @@ void main() {
             final rect = Rect.fromCenter(
               center: box.center,
               width: (halfX + 9 + 6) * 2,
-              height: (halfY + 18 + 6) * 2,
+              height: (halfY + 24 + 6) * 2,
             );
             expect(rect.left, greaterThanOrEqualTo(0));
             expect(rect.top, greaterThanOrEqualTo(0));
@@ -166,10 +166,24 @@ void main() {
       expect(sought, const Duration(seconds: 3));
       clock.value = const Duration(seconds: 4);
       await tester.pump();
+      expect(find.byKey(const ValueKey('luminous-stage')), findsNWidgets(2));
+      await tester.pump(const Duration(milliseconds: 80));
+      final entering = tester.widget<FadeTransition>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('luminous-stage')).last,
+              matching: find.byType(FadeTransition),
+            )
+            .first,
+      );
+      expect(entering.opacity.value, greaterThan(0));
+      expect(entering.opacity.value, lessThan(1));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('luminous-stage')), findsOneWidget);
       var painter =
           tester
                   .widget<CustomPaint>(
-                    find.byKey(const ValueKey('luminous-stage')),
+                    find.byKey(const ValueKey('luminous-stage')).last,
                   )
                   .painter!
               as LuminousPainter;
@@ -179,7 +193,7 @@ void main() {
       painter =
           tester
                   .widget<CustomPaint>(
-                    find.byKey(const ValueKey('luminous-stage')),
+                    find.byKey(const ValueKey('luminous-stage')).last,
                   )
                   .painter!
               as LuminousPainter;
