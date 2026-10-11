@@ -112,10 +112,7 @@ class _LuminousLyricsState extends State<LuminousLyrics>
                           switchOutCurve: Curves.easeInCubic,
                           layoutBuilder: (current, previous) => Stack(
                             fit: StackFit.expand,
-                            children: [
-                              ...previous,
-                              if (current != null) current,
-                            ],
+                            children: [...previous, ?current],
                           ),
                           transitionBuilder: (child, animation) =>
                               FadeTransition(

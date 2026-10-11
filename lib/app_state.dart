@@ -932,8 +932,9 @@ class MelodyState extends ChangeNotifier {
       if (automatic || query == '${target.title} ${target.artist}'.trim()) {
         _lyricChoiceCache.remove(target.id);
         _lyricChoiceCache[target.id] = List.of(choices);
-        if (_lyricChoiceCache.length > 8)
+        if (_lyricChoiceCache.length > 8) {
           _lyricChoiceCache.remove(_lyricChoiceCache.keys.first);
+        }
       }
       if (request != _lyricSearchSerial || current.id != target.id) return;
       lyricChoices = choices;

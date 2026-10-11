@@ -43,8 +43,9 @@ class PrefetchApi implements NeteaseApi {
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
-    if (invocation.memberName == #lyrics)
+    if (invocation.memberName == #lyrics) {
       return Future.value(const LyricsPayload(lrc: '[00:00.00]cached lyrics'));
+    }
     return null;
   }
 }
