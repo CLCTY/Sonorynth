@@ -9,9 +9,13 @@ void main() {
 
   test('coloured lettering on black artwork retains album colour', () {
     for (final count in [5, 10, 20]) {
-      expect(MelodyState.debugIsPredominantlyMonochrome([
-        ...List.filled(100 - count, 0), ...List.filled(count, 90),
-      ]), isFalse);
+      expect(
+        MelodyState.debugIsPredominantlyMonochrome([
+          ...List.filled(100 - count, 0),
+          ...List.filled(count, 90),
+        ]),
+        isFalse,
+      );
     }
   });
 

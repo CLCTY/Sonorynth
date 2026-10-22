@@ -1,7 +1,7 @@
 name: sonorynth
 description: Android music player with online playback, playlists, and LRC/QRC/YRC/TTML lyrics.
 publish_to: none
-version: 1.10.12+46
+version: 1.11.0+47
 
 environment:
   sdk: '>=3.10.0 <4.0.0'

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audio_service/audio_service.dart';
@@ -7,6 +8,14 @@ import 'ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught error: $error\n$stack');
+    return true;
+  };
   // Flutter's defaults are generous for desktop-class hardware. Bound decoded
   // artwork on memory-constrained Android devices without changing its display
   // resolution or visual quality.
@@ -30,7 +39,12 @@ Future<void> main() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final state = MelodyState(audioHandler);
   audioHandler.onSkip = state.skip;
-  await state.initialize();
+  try {
+    await state.initialize();
+  } catch (error, stack) {
+    // 初始化失败时仍然启动界面，避免冷启动白屏。
+    debugPrint('State initialization failed: $error\n$stack');
+  }
   runApp(MelodyScope(state: state, child: const MelodyApp()));
 }
 
@@ -51,6 +65,8 @@ class MelodyApp extends StatelessWidget {
         return MaterialApp(
           title: 'Sonorynth',
           debugShowCheckedModeBanner: false,
+          themeAnimationDuration: const Duration(milliseconds: 320),
+          themeAnimationCurve: Curves.easeOutCubic,
           themeMode: state.themeMode,
           theme: _theme(
             _scheme(palette, Brightness.light, idle: !state.hasCurrent),

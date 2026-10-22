@@ -8,8 +8,10 @@ void main() {
     for (final file in Directory('lib').listSync().whereType<File>()) {
       if (!file.path.endsWith('.dart')) continue;
       expect(
-        RegExp(r'melody[ _-]*flow', caseSensitive: false)
-            .hasMatch(file.readAsStringSync()),
+        RegExp(
+          r'melody[ _-]*flow',
+          caseSensitive: false,
+        ).hasMatch(file.readAsStringSync()),
         isFalse,
         reason: file.path,
       );

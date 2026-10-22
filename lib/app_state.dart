@@ -13,6 +13,7 @@ import 'audio_handler.dart';
 import 'lyrics_parser.dart';
 import 'models.dart';
 import 'netease_api.dart';
+import 'ui_motion.dart';
 
 enum CoverColorStyle {
   analogous('同频柔光'),
@@ -131,6 +132,7 @@ class MelodyState extends ChangeNotifier {
   bool searchingLyrics = false;
   bool preparingPlayback = false;
   bool dynamicColor = true;
+  bool floatingNavigationBar = false;
   bool gradientPlayerBackground = false;
   bool singleColorPlayerBackground = false;
   bool efficientRendering = true;
@@ -140,6 +142,8 @@ class MelodyState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   int fontWeightLevel = 0;
   bool showTranslation = true;
+  bool lyricBlur = true;
+  bool uiElementAnimations = true;
   bool karaokeLyrics = true;
   List<LyricSource> lyricSourceOrder = LyricSource.values.toList();
   bool privateMode = false;
@@ -194,6 +198,7 @@ class MelodyState extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     adapterEndpoint = _prefs?.getString('adapterEndpoint') ?? '';
     dynamicColor = _prefs?.getBool('dynamicColor') ?? true;
+    floatingNavigationBar = _prefs?.getBool('floatingNavigationBar') ?? false;
     // Restore the original static cover-derived surface for existing installs
     // as well as new ones. Later explicit user choices remain persistent.
     if (_prefs?.getBool('staticCoverBackgroundMigrationV1') != true) {
@@ -224,6 +229,9 @@ class MelodyState extends ChangeNotifier {
     );
     fontWeightLevel = (_prefs?.getInt('fontWeightLevel') ?? 0).clamp(0, 2);
     showTranslation = _prefs?.getBool('showTranslation') ?? true;
+    lyricBlur = _prefs?.getBool('lyricBlur') ?? true;
+    uiElementAnimations = _prefs?.getBool('uiElementAnimations') ?? true;
+    uiElementAnimationsEnabled = uiElementAnimations;
     karaokeLyrics = _prefs?.getBool('karaokeLyrics') ?? true;
     final savedLyricSources = _prefs?.getStringList('lyricSourceOrder') ?? [];
     lyricSourceOrder = LyricSource.values.toList()
@@ -408,6 +416,9 @@ class MelodyState extends ChangeNotifier {
     ]);
   }
 
+  bool? _lastPlayerPlaying;
+  ProcessingState? _lastProcessingState;
+
   void _listenToPlayer() {
     _positionSub = player.positionStream.listen((value) {
       final delta = value - position;
@@ -437,6 +448,13 @@ class MelodyState extends ChangeNotifier {
       } else if (value.processingState != ProcessingState.completed) {
         _advancingAfterCompletion = false;
       }
+      // playerStateStream 会重复推送相同状态，只在变化时重建界面。
+      if (_lastPlayerPlaying == value.playing &&
+          _lastProcessingState == value.processingState) {
+        return;
+      }
+      _lastPlayerPlaying = value.playing;
+      _lastProcessingState = value.processingState;
       notifyListeners();
     });
     _durationSub = player.durationStream.listen((value) {
@@ -1325,6 +1343,8 @@ class MelodyState extends ChangeNotifier {
 
   void setSetting(String key, bool value) {
     switch (key) {
+      case 'floatingNavigationBar':
+        floatingNavigationBar = value;
       case 'dynamicColor':
         dynamicColor = value;
       case 'gradientPlayerBackground':
@@ -1335,6 +1355,11 @@ class MelodyState extends ChangeNotifier {
         efficientRendering = value;
       case 'showTranslation':
         showTranslation = value;
+      case 'lyricBlur':
+        lyricBlur = value;
+      case 'uiElementAnimations':
+        uiElementAnimations = value;
+        uiElementAnimationsEnabled = value;
       case 'karaokeLyrics':
         karaokeLyrics = value;
       case 'privateMode':

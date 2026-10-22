@@ -6,6 +6,10 @@ import 'package:sonorynth/models.dart';
 
 class SettingsTestState extends ChangeNotifier implements MelodyState {
   @override
+  bool get lyricBlur => true;
+  @override
+  bool get uiElementAnimations => true;
+  @override
   FontWeight get emphasisWeight => FontWeight.w600;
   @override
   bool get efficientRendering => efficient;

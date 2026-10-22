@@ -8,10 +8,14 @@ plugins {
 val signingPath = System.getenv("SONORYNTH_SIGNING_PROPERTIES")
 val releaseSigning = Properties()
 if (!signingPath.isNullOrBlank()) {
-    file(signingPath).inputStream().use { releaseSigning.load(it) }
+    val signingFile = file(signingPath)
+    require(signingFile.exists()) { "SONORYNTH_SIGNING_PROPERTIES points to a missing file: ${signingFile.absolutePath}" }
+    signingFile.inputStream().use { releaseSigning.load(it) }
     listOf("storeFile", "storePassword", "keyAlias", "keyPassword").forEach {
         require(!releaseSigning.getProperty(it).isNullOrBlank()) { "Missing release signing field: $it" }
     }
+} else {
+    logger.warn("SONORYNTH_SIGNING_PROPERTIES is not set; release builds will be unsigned.")
 }
 
 android {

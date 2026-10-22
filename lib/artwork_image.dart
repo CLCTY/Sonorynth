@@ -29,6 +29,8 @@ class ArtworkImage extends StatelessWidget {
   static const _maximumCachedFiles = 48;
   static final LinkedHashMap<String, Future<File?>> _requests =
       LinkedHashMap<String, Future<File?>>();
+  static final _readyFiles = <String, File>{};
+  static final _availableArtworks = <String, ({File file, int size})>{};
   static final Future<Directory> _diskCache = _createDiskCache();
 
   static Future<Directory> _createDiskCache() async {
@@ -72,12 +74,25 @@ class ArtworkImage extends StatelessWidget {
     }
   }
 
-  static Future<File?> _cachedFile(String url) {
+  static Future<File?> _cachedFile(String url, String identity, int size) {
     final existing = _requests[url];
     if (existing != null) return existing;
     final request = _loadFile(url);
     _requests[url] = request;
     request.then((file) {
+      if (file != null) {
+        _readyFiles[url] = file;
+        final available = _availableArtworks[identity];
+        if (available == null || available.size <= size) {
+          _availableArtworks[identity] = (file: file, size: size);
+        }
+        while (_readyFiles.length > _maximumCachedFiles) {
+          _readyFiles.remove(_readyFiles.keys.first);
+        }
+        while (_availableArtworks.length > _maximumCachedFiles) {
+          _availableArtworks.remove(_availableArtworks.keys.first);
+        }
+      }
       if (file == null && identical(_requests[url], request)) {
         _requests.remove(url);
       }
@@ -91,7 +106,7 @@ class ArtworkImage extends StatelessWidget {
   static Future<File?> loadFile(String raw, {int size = 600}) {
     final resolved = neteaseArtworkUrl(raw, size: size);
     if (resolved.isEmpty) return Future.value();
-    return _cachedFile(resolved);
+    return _cachedFile(resolved, neteaseArtworkUrl(raw, size: 600), size);
   }
 
   static Future<Uint8List?> loadBytes(String raw, {int size = 600}) {
@@ -100,18 +115,29 @@ class ArtworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (neteaseArtworkUrl(url, size: size).isEmpty) return fallback;
+    final resolved = neteaseArtworkUrl(url, size: size);
+    if (resolved.isEmpty) return fallback;
+    final identity = neteaseArtworkUrl(url, size: 600);
+    final initialFile =
+        _readyFiles[resolved] ?? _availableArtworks[identity]?.file;
     return FutureBuilder<File?>(
       future: loadFile(url, size: size),
+      initialData: initialFile,
       builder: (context, snapshot) {
-        final file = snapshot.data;
+        final available = _availableArtworks[identity];
+        final file = snapshot.data ?? available?.file ?? initialFile;
         if (file == null) return fallback;
+        // Reuse the thumbnail's decoded image while a larger request is in
+        // flight, rather than creating a new decode or flashing a placeholder.
+        final decodeSize = available?.file.path == file.path
+            ? available!.size
+            : size;
         return Image.file(
           file,
           fit: fit,
           gaplessPlayback: true,
-          cacheWidth: size,
-          cacheHeight: size,
+          cacheWidth: decodeSize,
+          cacheHeight: decodeSize,
           filterQuality: FilterQuality.low,
           errorBuilder: (_, _, _) => fallback,
         );
